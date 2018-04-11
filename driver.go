@@ -1,6 +1,5 @@
 package main
 
-
 import (
 	"context"
 	"encoding/binary"
@@ -13,18 +12,17 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
-    "github.com/docker/docker/daemon/logger/loggerutils"
+	"github.com/docker/docker/daemon/logger/loggerutils"
 	protoio "github.com/gogo/protobuf/io"
 	"github.com/pkg/errors"
 	"github.com/Sirupsen/logrus"
 	"github.com/tonistiigi/fifo"
-	//"github.com/dougEfresh/logzio-go"
 	"crypto/sha1"
 	"encoding/hex"
+	"github.com/idohalevi/logzio-go"
 )
 
 
@@ -86,7 +84,7 @@ type logzioLogger struct{
     closed             bool
     closedChannel      chan int
 	closedDriverCond   *sync.Cond
-    logzioSender       *LogzioSender //TODO - change to git
+    logzioSender       *logzio.LogzioSender
     lock               sync.RWMutex
     logFormat          string
     msg                *logzioMessage
@@ -95,7 +93,7 @@ type logzioLogger struct{
 }
 
 type senderConfigurations struct {
-	sender 		*LogzioSender
+	sender 		*logzio.LogzioSender
 	info   		logger.Info
 	hashCode	string
 }
@@ -240,8 +238,8 @@ func getEnvInt(env string, dValue int) int{
 	return int(retVal)
 }
 
-func newLogzioSender(loggerInfo logger.Info, token string, sender *LogzioSender, hashCode string) (*LogzioSender, error){//TODO - change to git
-	if sender != nil{
+func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.LogzioSender, hashCode string) (*logzio.LogzioSender, error) {
+	if sender != nil {
 		return sender, nil
 	}
 	// Getenv retrieves the value of the environment variable named by the key.
@@ -258,14 +256,15 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *LogzioSender,
 		}
 	}
 	urlStr, _ := loggerInfo.Config[logzioUrl]
-	dir , _:= loggerInfo.Config[logzioDirPath]
+	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
+	lsender, err := logzio.New(token,
+		logzio.SetUrl(urlStr),
+		logzio.SetDrainDiskThreshold(eDiskThreshold),
+		logzio.SetTempDirectory(fmt.Sprintf("%s_%s", dir, hashCode)),
+		logzio.SetDrainDuration(drainDuration))
 
-	return New(token,//TODO - change to git
-		SetUrl(urlStr),//TODO - change to git
-		SetDrainDiskThreshold(eDiskThreshold),//TODO - change to git
-		SetDrainDuration(drainDuration),//TODO - change to git
-		SetTempDirectory(fmt.Sprintf("%s_%s",dir,hashCode)))//TODO - change to git
+	return lsender, err
 }
 
 func hash(args ...string) string{
@@ -278,7 +277,7 @@ func hash(args ...string) string{
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func newLogzioLogger(loggerInfo logger.Info, sender *LogzioSender, hashCode string) (logger.Logger, error){
+func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (logger.Logger, error){
 	optToken := loggerInfo.Config[logzioToken]
 
 	hostname, err := setHostname(loggerInfo)
@@ -331,7 +330,7 @@ func (logziol *logzioLogger) sendToLogzio(){
 		}else{
 			logziol.logzioSender.Stop()
 			logziol.lock.Lock()
-			logziol.logzioSender.httpTransport.CloseIdleConnections()
+			logziol.logzioSender.CloseIdleConnections()
 			logziol.closed = true
 			logziol.closedDriverCond.Signal()
 			// better to not use defer in a loop if possible
@@ -398,7 +397,7 @@ func (logziol *logzioLogger) Name() string{
 	return driverName
 }
 
-func (d *driver) checkHashCodeExists(hashCode string, token string) *LogzioSender{
+func (d *driver) checkHashCodeExists(hashCode string, token string) *logzio.LogzioSender{
 	if _,ok := d.senders[token]; ok{
 		if hashCode != d.senders[token].hashCode{
 			logrus.Error(fmt.Sprintf("Can use only one configuration set per token: %+v\n", d.senders[hashCode].info))

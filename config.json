@@ -1,0 +1,12 @@
+{
+  "description": "Logz.io logging plugin",
+  "documentation": "https://github.com/logzio/Docker-Logging-Driver",
+  "entrypoint": ["/bin/logzio-logging-driver-plugin"],
+  "network": {
+    "type": "host"
+  },
+  "interface": {
+    "types": ["docker.logdriver/1.0"],
+    "socket": "logzioLogger.sock"
+  }
+}

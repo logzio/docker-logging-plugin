@@ -261,7 +261,7 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	lsender, err := logzio.New(token,
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
-		logzio.SetTempDirectory(fmt.Sprintf("%s_%s", dir, hashCode)),
+		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir,string(os.PathSeparator), hashCode)),
 		logzio.SetDrainDuration(drainDuration))
 
 	return lsender, err

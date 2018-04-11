@@ -105,7 +105,7 @@ func TestSendingFormats(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	str := &logger.Message{
 		Line: 		[]byte("string"),
@@ -172,7 +172,7 @@ func TestSendingFormats(t *testing.T){
 	}
 }
 
-func _TestSendingNoTag(t *testing.T) {
+func TestSendingNoTag(t *testing.T) {
 	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
 	go mock.Serve()
 	defer mock.Close()
@@ -193,7 +193,7 @@ func _TestSendingNoTag(t *testing.T) {
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	str := &logger.Message{
 		Line:      []byte("string"),
@@ -217,9 +217,9 @@ func _TestSendingNoTag(t *testing.T) {
 	sm := mock.messages[0]
 	if sm.Host != hostname ||
 		sm.LogSource != "stdout" ||
-		sm.Tags != "" || //TODO - to change after check
+		sm.Tags != "" ||
 		sm.Type != "" ||
-		sm.Extra != nil || //TODO - to check how to make it disappear
+		sm.Extra != nil ||
 		sm.Time != fmt.Sprintf("%f", float64(str.Timestamp.UnixNano())/float64(time.Second)){
 		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
 	}
@@ -228,7 +228,7 @@ func _TestSendingNoTag(t *testing.T) {
 	}
 }
 
-func _TestTimerSendingNotExpired(t *testing.T){
+func TestTimerSendingNotExpired(t *testing.T){
 	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
 	go mock.Serve()
 	defer mock.Close()
@@ -249,7 +249,7 @@ func _TestTimerSendingNotExpired(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	msgTime := time.Now()
 	str := &logger.Message{
@@ -296,7 +296,7 @@ func _TestTimerSendingNotExpired(t *testing.T){
 	}
 }
 
-func _TestTimerSendingExpired(t *testing.T){
+func TestTimerSendingExpired(t *testing.T){
 	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
 	go mock.Serve()
 	defer mock.Close()
@@ -317,7 +317,7 @@ func _TestTimerSendingExpired(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	msgTime := time.Now()
 	str := &logger.Message{
@@ -364,7 +364,7 @@ func _TestTimerSendingExpired(t *testing.T){
 	}
 }
 
-func _TestDrainAfterClosed(t *testing.T){
+func TestDrainAfterClosed(t *testing.T){
 	resp := []int{http.StatusInternalServerError, http.StatusInternalServerError, http.StatusOK}
 	mock := NewtestHTTPMock(t, resp)
 	go mock.Serve()
@@ -389,7 +389,7 @@ func _TestDrainAfterClosed(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 	for i:=0; i<5; i++{
 		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout", Timestamp: time.Now()}); err != nil{
 			t.Fatalf("Failed Log string: %s", err)
@@ -403,18 +403,18 @@ func _TestDrainAfterClosed(t *testing.T){
 
 	batchNumber := mock.Batch()
 	if batchNumber != len(resp){
-		t.Fatalf("Unexpected batch number %d. Expected %d retries", batchNumber, sendRetries)
+		t.Fatalf("Unexpected batch number %d. Expected %d retries", batchNumber, 3)
 	}
 
 	// sanity check
-	for i:=0; i<sendRetries-1; i++{
+	for i:=0; i<3; i++{
 		if mock.messages[i].Message != fmt.Sprintf("%s%d", "str", i){
 			t.Fatalf("message %g not matching message %d", mock.messages[i].Message, i)
 		}
 	}
 }
 
-func _TestServerIsDown(t *testing.T){
+func TestServerIsDown(t *testing.T){
 	var sent= make([]byte, 1024)
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -437,7 +437,7 @@ func _TestServerIsDown(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(info.Config[logzioDirPath] + "_0")
+	defer os.RemoveAll(info.Config[logzioDirPath])
 	for i:=0; i<5; i++{
 		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", t.Name(), i)), Source: "stdout", Timestamp: time.Now()}); err != nil{
 			t.Fatalf("Failed Log string: %s", err)
@@ -450,7 +450,7 @@ func _TestServerIsDown(t *testing.T){
 	}
 
 	//check the logs are saved to disk
-	q, err := goque.OpenQueue(fmt.Sprintf("./%s_0", t.Name()))
+	q, err := goque.OpenQueue(fmt.Sprintf("./%s/0", t.Name()))
 	//We requeue as one big string
 	if q.Length() != 1{
 		t.Fatalf("Queue length is not as expected: %d", q.Length())

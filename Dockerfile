@@ -13,4 +13,4 @@ FROM alpine:3.7
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /bin/logzio-logging-driver-plugin /bin/
 WORKDIR /bin/
-ENTRYPOINT [ "/bin/logzio-logging-driver-plugin" ]
+ENTRYPOINT ["/bin/logzio-logging-driver-plugin"]

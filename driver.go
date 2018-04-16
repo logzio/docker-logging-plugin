@@ -23,6 +23,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"github.com/idohalevi/logzio-go"
+	"bytes"
 )
 
 
@@ -39,15 +40,15 @@ const(
     envLogsDrainTimeout    		=   "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
 	envChannelSize				=   "LOGZIO_DRIVER_CHANNEL_SIZE"
 	envDiskThreshold    		=   "LOGZIO_DRIVER_DISK_THRESHOLD"
-
+	envMaxMsgBufferSize			= 	"LOGZIO_MAX_MSG_BUFFER_SIZE"
 	envRegex					= 	"env-regex"
 	dockerLabels				=	"labels"
 	dockerEnv					=	"env"
 
-
+	defaultMaxMsgBufferSize     =	1024 * 1024
     defaultLogsDrainTimeout 	= 	time.Second * 5
     defaultDiskThreshould		= 	70
-    defaultStreamChannelSize	= 	5 * 1000
+    defaultStreamChannelSize	= 	10 * 1000
 
     defaultFormat           	= 	"text"
     driverName              	= 	"logzio"
@@ -87,8 +88,10 @@ type logzioLogger struct{
     logzioSender       *logzio.LogzioSender
     lock               sync.RWMutex
     logFormat          string
+    maxMsgBufferSize   int
     msg                *logzioMessage
 	msgStream          chan *logzioMessage
+	partialBuffers	   map[string]*bytes.Buffer
     url                string
 }
 
@@ -97,7 +100,6 @@ type senderConfigurations struct {
 	info   		logger.Info
 	hashCode	string
 }
-
 
 func newDriver() *driver {
 	return &driver{
@@ -136,8 +138,7 @@ func validateDriverOpt(loggerInfo logger.Info) (string, error){
     if !ok{
         return "", fmt.Errorf("logz.io token is required")
     }
-	hashCode := hash(token,
-		config[logzioDirPath])
+	hashCode := hash(token, config[logzioDirPath], config[logzioFormat])
 
 	return hashCode, nil
 }
@@ -153,44 +154,6 @@ func setTag(loggerInfo logger.Info) (string, error){
 	}
 	return tag, nil
 }
-
-
-//func setClient(loggerInfo logger.Info) (*http.Client, *http.Transport){
-//    tlsConfig := &tls.Config{InsecureSkipVerify: true}
-//
-//    // Using this example - https://github.com/jcbsmpsn/golang-https-example
-//    //if caPath, ok := loggerInfo.Config[logzioCAPath]; ok{
-//    //    caCert, err := ioutil.ReadFile(caPath)
-//    //    if err != nil {
-//    //        return nil, nil, err
-//    //    }
-//    //    caCertPool := x509.NewCertPool()
-//    //    caCertPool.AppendCertsFromPEM(caCert)
-//    //    tlsConfig.RootCAs = caCertPool
-//    //}
-//	//
-//    //if caName, ok := loggerInfo.Config[logzioCAName]; ok{
-//    //    tlsConfig.ServerName = caName
-//    //}
-//	//
-//    //if skipTLSVerify, ok := loggerInfo.Config[logzioInsecureSkipVerify]; ok {
-//		//skipTLSVerify, err := strconv.ParseBool(skipTLSVerify)
-//		//if err != nil {
-//		//	return nil, nil,err
-//		//}
-//		//tlsConfig.InsecureSkipVerify = skipTLSVerify
-//	//}
-//
-//	transport := &http.Transport{
-//		TLSClientConfig: tlsConfig,
-//	}
-//
-//	client := &http.Client{
-//		Transport: transport,
-//	}
-//
-//	return client, transport
-//}
 
 func setHostname(loggerInfo logger.Info) (string, error){
     // https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
@@ -294,7 +257,7 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
     sourceType := loggerInfo.Config[logzioType]
 	logSource := loggerInfo.Config[logzioLogSource]
     streamSize := getEnvInt(envChannelSize, defaultStreamChannelSize)
-
+	maxMsgBufferSize := getEnvInt(envMaxMsgBufferSize, defaultMaxMsgBufferSize)
     defaultMsg := &logzioMessage{
         Host:       hostname,
 		LogSource:	logSource,
@@ -310,8 +273,10 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
         closedChannel:      make(chan int),
         logzioSender:		logzioSender,
         logFormat:          format,
+        maxMsgBufferSize:   maxMsgBufferSize,
         msg:                defaultMsg,
     	msgStream:          make(chan *logzioMessage, streamSize),
+    	partialBuffers:		make(map[string]*bytes.Buffer),
 	}
 
     go logziol.sendToLogzio()
@@ -326,7 +291,7 @@ func (logziol *logzioLogger) sendToLogzio(){
 				logrus.Error(fmt.Sprintf("Error marshalling json object: %s\n", err.Error()))
 			} else if err := logziol.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
-				}
+			}
 		}else{
 			logziol.logzioSender.Stop()
 			logziol.lock.Lock()
@@ -352,29 +317,44 @@ func (logziol *logzioLogger) sendMessageToChannel(msg *logzioMessage) error{
 }
 
 func (logziol *logzioLogger) Log(msg *logger.Message) error{
-    logMessage := *logziol.msg
+	buf, ok := logziol.partialBuffers[msg.PLogMetaData.ID]
+	if !ok{
+		logziol.partialBuffers[msg.PLogMetaData.ID]  = bytes.NewBuffer(make([]byte, logziol.maxMsgBufferSize))
+		buf = logziol.partialBuffers[msg.PLogMetaData.ID]
+	}
+
+	_, err := buf.Write(msg.Line)
+	if err != nil{
+		return err
+	}
+	if msg.PLogMetaData != nil && !msg.PLogMetaData.Last{
+		return nil
+	}
+	tBuf := bytes.Trim(buf.Bytes(), "\x00")
+
+	logMessage := *logziol.msg
     logMessage.Time = fmt.Sprintf("%f", float64(msg.Timestamp.UnixNano())/float64(time.Second))
     logMessage.LogSource = msg.Source
-
     format := logziol.logFormat
     if format == defaultFormat{
-        logMessage.Message = string(msg.Line)
+        logMessage.Message = string(tBuf)
     }else{
         // use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
         var jsonLogLine json.RawMessage
-    	if err := json.Unmarshal(msg.Line, &jsonLogLine); err == nil {
+    	if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
     		logMessage.Message = &jsonLogLine
     	} else {
     		// don't try to fight it
-    		logMessage.Message = string(msg.Line)
+    		logMessage.Message = string(tBuf)
     	}
     }
-    //https://github.com/moby/moby/blob/master/daemon/logger/logger.go
+    // https://github.com/moby/moby/blob/master/daemon/logger/logger.go
     // NewMessage returns a new message from the message sync.Pool
     // PutMessage puts the specified message back n the message pool.
     // The message fields are reset before putting into the pool.
     logger.PutMessage(msg)
-	err := logziol.sendMessageToChannel(&logMessage)
+	buf.Reset()
+	err = logziol.sendMessageToChannel(&logMessage)
     return err
 }
 
@@ -484,8 +464,9 @@ func consumeLog(lf *logPair) {
 		var msg logger.Message
 		msg.Line = buf.Line
 		msg.Source = buf.Source
-		msg.Partial = buf.Partial
 		msg.Timestamp = time.Unix(0, buf.TimeNano)
+		msg.PLogMetaData.Last = !buf.Partial
+		msg.PLogMetaData.ID = lf.info.ContainerID
 
 		if err := lf.l.Log(&msg); err != nil {
 			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
@@ -531,7 +512,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				}
 
 				buf.Line = msg.Line
-				buf.Partial = msg.Partial
+				buf.Partial = !msg.PLogMetaData.Last
 				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 

@@ -5,7 +5,7 @@ WORKDIR /go/src/github.com/logzio/logzio-logging-driver-plugin/
 COPY . /go/src/github.com/logzio/logzio-logging-driver-plugin/
 
 
-RUN cd /go/src/github.com/logzio/logzio-logging-driver-plugin && go get
+RUN cd /go/src/github.com/logzio/logzio-logging-driver-plugin && go get -v
 
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /bin/logzio-logging-driver-plugin .
 

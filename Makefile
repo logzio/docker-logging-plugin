@@ -1,5 +1,5 @@
 # Plugin parameters
-PLUGIN_NAME=logzio-logging-driver-plugin
+PLUGIN_NAME=registry.internal.logz.io:5000/logzio-logging-driver-plugin
 PLUGIN_TAG=latest
 
 all: clean docker rootfs create

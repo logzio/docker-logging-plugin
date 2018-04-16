@@ -14,6 +14,7 @@ import(
 
 	"net/http/httptest"
 
+	"github.com/docker/docker/api/types/backend"
 )
 
 func TestValidateDriverOpt(t *testing.T){//TODO - update cases
@@ -77,8 +78,7 @@ func TestNoSuchLogOpt(t *testing.T){
 	}
 }
 
-
-func TestSendingFormats(t *testing.T){
+func TestSendingString(t *testing.T){
 	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
 	go mock.Serve()
 	defer mock.Close()
@@ -86,7 +86,7 @@ func TestSendingFormats(t *testing.T){
 		Config: map[string]string{
 			logzioUrl:   	mock.URL(),
 			logzioToken:	mock.Token(),
-			logzioFormat: 	jsonFormat,
+			logzioFormat: 	defaultFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
 			logzioTag:		"{{.ImageName}}",
 			dockerLabels:	"labelKey",
@@ -101,30 +101,24 @@ func TestSendingFormats(t *testing.T){
 			"labelKey": "labelValue",
 		},
 	}
+
 	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	str := &logger.Message{
 		Line: 		[]byte("string"),
 		Source:  	"stdout",
 		Timestamp: 	time.Now(),
+		PLogMetaData: plmd,
 	}
-
 	if err := logziol.Log(str); err != nil{
 		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	jstr := &logger.Message{
-		Line: 		[]byte("{\"key\":\"value\"}"),
-		Source:  	"stdout",
-		Timestamp: 	time.Now(),
-	}
-
-	if err := logziol.Log(jstr); err != nil{
-		t.Fatalf("Failed Log json: %s", err)
 	}
 
 	err = logziol.Close()
@@ -152,9 +146,64 @@ func TestSendingFormats(t *testing.T){
 	if sm.Message != "string"{
 		t.Fatalf("Failed string message, not a string: %s", sm.Message)
 	}
+}
 
+func TestSendingJson(t *testing.T){
+	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
+	go mock.Serve()
+	defer mock.Close()
+	info := logger.Info{
+		Config: map[string]string{
+			logzioUrl:   	mock.URL(),
+			logzioToken:	mock.Token(),
+			logzioFormat: 	jsonFormat,
+			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+			logzioTag:		"{{.ImageName}}",
+			dockerLabels:	"labelKey",
+			envRegex:		"^envKey",
+		},
+		ContainerID:        "containeriid",
+		ContainerName:      "/container_name",
+		ContainerImageID:   "contaimageid",
+		ContainerImageName: "container_image_name",
+		ContainerEnv:		[]string{"envKey=envValue"},
+		ContainerLabels: 	map[string]string{
+			"labelKey": "labelValue",
+		},
+	}
+
+	logziol, err := newLogzioLogger(info, nil, "0")
+	if err != nil{
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
+
+	jstr := &logger.Message{
+		Line: 			[]byte("{\"key\":\"value\"}"),
+		Source:  		"stdout",
+		Timestamp: 		time.Now(),
+		PLogMetaData:	plmd,
+	}
+
+	if err := logziol.Log(jstr); err != nil{
+		t.Fatalf("Failed Log json: %s", err)
+	}
+
+	err = logziol.Close()
+	if err != nil{
+		t.Fatal(err)
+	}
+
+	hostname, err := info.Hostname()
+	if err != nil{
+		t.Fatal(err)
+	}
 	// check json message
-	jm := mock.messages[1]
+	jm := mock.messages[0]
 	if jm.Host != hostname ||
 		jm.LogSource != "stdout" ||
 		jm.Tags != info.ContainerID ||
@@ -166,9 +215,10 @@ func TestSendingFormats(t *testing.T){
 	if jm.Extra["envKey"] != "envValue" || jm.Extra["labelKey"] != "labelValue"{
 		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", jm.Extra)
 	}
+
 	// casting message to a map
 	if jm.Message.(map[string]interface{})["key"] != "value"{
-		t.Fatalf("Failed json message, not a json: %v", sm.Message)
+		t.Fatalf("Failed json message, not a json: %v", jm.Message)
 	}
 }
 
@@ -194,11 +244,15 @@ func TestSendingNoTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	str := &logger.Message{
-		Line:      []byte("string"),
-		Source:    "stdout",
-		Timestamp: time.Now(),
+		Line:      		[]byte("string"),
+		Source:    		"stdout",
+		Timestamp: 		time.Now(),
+		PLogMetaData: 	plmd,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -250,12 +304,16 @@ func TestTimerSendingNotExpired(t *testing.T){
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	msgTime := time.Now()
 	str := &logger.Message{
-		Line: 		[]byte("string"),
-		Source:  	"stdout",
-		Timestamp: 	msgTime,
+		Line: 			[]byte("string"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
 	}
 
 	if err := logziol.Log(str); err != nil{
@@ -264,10 +322,16 @@ func TestTimerSendingNotExpired(t *testing.T){
 
 	<- time.After(defaultLogsDrainTimeout - (time.Second * 1))
 
+	plmd = &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
+
 	str = &logger.Message{
-		Line: 		[]byte("string"),
-		Source:  	"stdout",
-		Timestamp: 	msgTime,
+		Line: 			[]byte("string"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
 	}
 
 	if err := logziol.Log(str); err != nil{
@@ -286,12 +350,12 @@ func TestTimerSendingNotExpired(t *testing.T){
 		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
 	}
 	// sanity check
-	sMsg, jMsg := mock.messages[0], mock.messages[1]
-	if sMsg.Message != jMsg.Message ||
-		sMsg.LogSource != jMsg.LogSource ||
-		sMsg.Host != jMsg.Host||
-		sMsg.Time != jMsg.Time ||
-		sMsg.Tags != jMsg.Tags{
+	firstMsg, secondMsg := mock.messages[0], mock.messages[1]
+	if firstMsg.Message != secondMsg.Message ||
+		firstMsg.LogSource != secondMsg.LogSource ||
+		firstMsg.Host != secondMsg.Host||
+		firstMsg.Time != secondMsg.Time ||
+		firstMsg.Tags != secondMsg.Tags{
 		t.Fatal("Expecting messages to be the same")
 	}
 }
@@ -318,12 +382,16 @@ func TestTimerSendingExpired(t *testing.T){
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	msgTime := time.Now()
 	str := &logger.Message{
-		Line: 		[]byte("string"),
-		Source:  	"stdout",
-		Timestamp: 	msgTime,
+		Line: 			[]byte("string"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
 	}
 
 	if err := logziol.Log(str); err != nil{
@@ -331,11 +399,15 @@ func TestTimerSendingExpired(t *testing.T){
 	}
 
 	<- time.After(defaultLogsDrainTimeout + (time.Second * 1))
-
+	plmd = &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	str = &logger.Message{
-		Line: 		[]byte("string"),
-		Source:  	"stdout",
-		Timestamp: 	msgTime,
+		Line: 			[]byte("string"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
 	}
 
 	if err := logziol.Log(str); err != nil{
@@ -361,6 +433,171 @@ func TestTimerSendingExpired(t *testing.T){
 		sMsg.Time != jMsg.Time ||
 		sMsg.Tags != jMsg.Tags{
 		t.Fatal("Expecting messages to be the same")
+	}
+}
+
+func TestPartialSendingString(t *testing.T){
+	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
+	go mock.Serve()
+	defer mock.Close()
+
+	info := logger.Info{
+		Config: map[string]string{
+			logzioUrl:   	mock.URL(),
+			logzioToken:	mock.Token(),
+			logzioFormat: 	jsonFormat,
+			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+		},
+		ContainerID:        "containeriid",
+		ContainerName:      "/container_name",
+		ContainerImageID:   "contaimageid",
+		ContainerImageName: "container_image_name",
+	}
+	logziol, err := newLogzioLogger(info, nil, "0")
+	if err != nil{
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	false,
+		ID:		info.ContainerID,
+	}
+	msgTime := time.Now()
+	str := &logger.Message{
+		Line: 			[]byte("str"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
+	}
+
+	if err := logziol.Log(str); err != nil{
+		t.Fatalf("Failed Log string: %s", err)
+	}
+
+	plmd = &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
+	msgTime = time.Now()
+	str = &logger.Message{
+		Line: 			[]byte("ing"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
+	}
+
+	if err := logziol.Log(str); err != nil{
+		t.Fatalf("Failed Log string: %s", err)
+	}
+
+	err = logziol.Close()
+	if err != nil{
+		t.Fatal(err)
+	}
+
+	<- time.After(250 * time.Millisecond)
+
+	batchNumber := mock.Batch()
+	if batchNumber != 1{
+		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
+	}
+	hostname, err := os.Hostname()
+	if err != nil{
+		t.Fatal(err)
+	}
+	// sanity check
+	sMsg := mock.messages[0]
+	if sMsg.Message != "string" ||
+		sMsg.LogSource != "stdout" ||
+		sMsg.Host != hostname||
+		sMsg.Time != fmt.Sprintf("%f", float64(str.Timestamp.UnixNano())/float64(time.Second)) ||
+		sMsg.Tags != info.ContainerID{
+			t.Fatal("Expecting messages to be the same")
+	}
+}
+
+func TestPartialSendingJson(t *testing.T){
+	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
+	go mock.Serve()
+	defer mock.Close()
+
+	info := logger.Info{
+		Config: map[string]string{
+			logzioUrl:   	mock.URL(),
+			logzioToken:	mock.Token(),
+			logzioFormat: 	jsonFormat,
+			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+		},
+		ContainerID:        "containeriid",
+		ContainerName:      "/container_name",
+		ContainerImageID:   "contaimageid",
+		ContainerImageName: "container_image_name",
+	}
+	logziol, err := newLogzioLogger(info, nil, "0")
+	if err != nil{
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	false,
+		ID:		info.ContainerID,
+	}
+	msgTime := time.Now()
+	jstr := &logger.Message{
+		Line: 			[]byte("{\"key\""),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
+	}
+
+	if err := logziol.Log(jstr); err != nil{
+		t.Fatalf("Failed Log string: %s", err)
+	}
+
+	plmd = &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
+	msgTime = time.Now()
+	jstr = &logger.Message{
+		Line: 			[]byte(":\"value\"}"),
+		Source:  		"stdout",
+		Timestamp: 		msgTime,
+		PLogMetaData:	plmd,
+	}
+
+	if err := logziol.Log(jstr); err != nil{
+		t.Fatalf("Failed Log string: %s", err)
+	}
+
+	err = logziol.Close()
+	if err != nil{
+		t.Fatal(err)
+	}
+
+	<- time.After(250 * time.Millisecond)
+
+	batchNumber := mock.Batch()
+	if batchNumber != 1{
+		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
+	}
+	hostname, err := info.Hostname()
+	if err != nil{
+		t.Fatal(err)
+	}
+	// check json message
+	jm := mock.messages[0]
+	if jm.Host != hostname ||
+		jm.LogSource != "stdout" ||
+		jm.Tags != info.ContainerID ||
+		jm.Type != "" ||
+		jm.Time != fmt.Sprintf("%f", float64(jstr.Timestamp.UnixNano())/float64(time.Second)){
+		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
+	}
+
+	// casting message to a map
+	if jm.Message.(map[string]interface{})["key"] != "value"{
+		t.Fatalf("Failed json message, not a json: %v", jm.Message)
 	}
 }
 
@@ -390,8 +627,13 @@ func TestDrainAfterClosed(t *testing.T){
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	for i:=0; i<5; i++{
-		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout", Timestamp: time.Now()}); err != nil{
+		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout",
+		Timestamp: time.Now(), PLogMetaData: plmd}); err != nil{
 			t.Fatalf("Failed Log string: %s", err)
 		}
 	}
@@ -437,9 +679,15 @@ func TestServerIsDown(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
+
 	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
 	for i:=0; i<5; i++{
-		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", t.Name(), i)), Source: "stdout", Timestamp: time.Now()}); err != nil{
+		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", t.Name(), i)),
+		Source: "stdout", Timestamp: time.Now(), PLogMetaData: plmd}); err != nil{
 			t.Fatalf("Failed Log string: %s", err)
 		}
 	}

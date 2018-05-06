@@ -8,7 +8,7 @@ import (
 	"github.com/docker/go-plugins-helpers/sdk"
 )
 
-const socketName = "logzioLogger"
+const socketName = "/run/docker/plugins/logzio.sock"
 
 var logLevels = map[string]logrus.Level{
 	"debug": logrus.DebugLevel,
@@ -18,6 +18,7 @@ var logLevels = map[string]logrus.Level{
 }
 
 func main() {
+	logrus.Info("Plugin socket is located at %s\n", socketName) // TODO - delete
 	levelVal := os.Getenv("LOG_LEVEL")
 	if levelVal == "" {
 		levelVal = "info"
@@ -28,7 +29,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "invalid log level: ", levelVal)
 		os.Exit(1)
 	}
-
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 	handlers(&h, newDriver())
 	if err := h.ServeUnix(socketName, 0); err != nil {

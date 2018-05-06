@@ -7,6 +7,6 @@
   },
   "interface": {
     "types": ["docker.logdriver/1.0"],
-    "socket": "logzioLogger.sock"
+    "socket": "logzio.sock"
   }
 }

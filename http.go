@@ -41,7 +41,6 @@ func handlers(h *sdk.Handler, d *driver) {
 			respond(errors.New("must provide container id in log context"), w)
 			return
 		}
-
 		err := d.StartLogging(req.File, req.Info)
 		respond(err, w)
 	})
@@ -68,7 +67,6 @@ func handlers(h *sdk.Handler, d *driver) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
 		stream, err := d.ReadLogs(req.Info, req.Config)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -52,17 +52,17 @@ def get_exitcode_stdout_stderr(cmd):
 
 
 def remove_image(image):
-    return subprocess_cmd('sudo docker rmi {}'.format(image))
+    subprocess_cmd('sudo docker rmi {}'.format(image))
 
 
 def remove_containers():
-    return subprocess_cmd('sudo docker rm $(sudo docker ps -a -q)')
+    subprocess_cmd('sudo docker rm $(sudo docker ps -a -q)')
 
 
 def cleanup(images):
-    assert remove_containers() == 0, "Failed to remove containers"
+    remove_containers()
     for image in images:
-        assert remove_image(image) == 0, "Failed to remove test image"
+        remove_image(image)
 
 
 # to add mock and change password
@@ -77,7 +77,7 @@ class TestDockerDriver(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        assert subprocess_cmd('cd ..; sudo make clean') == 0, "Failed to remove plugin"
+        subprocess_cmd('cd ..; sudo make clean')
 
     def setUp(self):
         # TODO - change to github

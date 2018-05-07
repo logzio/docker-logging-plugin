@@ -1,8 +1,8 @@
 {
   "log-driver": "logzio",
   "log-opts": {
-    "logzio-token": "sCvFJmZlhxgCwSnRglhmXoIDpMxkMOlr",
-    "logzio-url": "https://listener.logz.io:8071",
+    "logzio-token": "token",
+    "logzio-url": "url",
     "logzio-dir-path": "./test_deamon_global_configuration"
   }
 }

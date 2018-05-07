@@ -4,6 +4,7 @@ WORKDIR /go/src/github.com/logzio/logzio-logging-driver-plugin/
 
 COPY . /go/src/github.com/logzio/logzio-logging-driver-plugin/
 
+RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
 RUN cd /go/src/github.com/logzio/logzio-logging-driver-plugin && go get -v
 

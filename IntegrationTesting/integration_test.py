@@ -1,7 +1,11 @@
+import json
 import logging
 import subprocess
 import unittest
 import shlex
+
+import os
+
 import mock_listener
 from subprocess import Popen, PIPE
 
@@ -9,7 +13,7 @@ from subprocess import Popen, PIPE
 # Set debug prints
 import time
 
-debug = True
+_debug = True
 
 # Set logger
 logging.basicConfig(format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s', level=logging.INFO)
@@ -21,7 +25,7 @@ plugin_name = "logzio:latest"
 
 
 def debug(message):
-    if debug:
+    if _debug:
         logger.info(str(message))
 
 
@@ -47,34 +51,55 @@ def get_exitcode_stdout_stderr(cmd):
     return exitcode, out, err
 
 
-def delete_image(image):
+def remove_image(image):
     return subprocess_cmd('sudo docker rmi {}'.format(image))
 
 
-def get_url(token):
-    return "https://listener.logz.io:8071/?token={}".format(token)
+def remove_containers():
+    return subprocess_cmd('sudo docker rm $(sudo docker ps -a -q)')
+
+
+def cleanup(images):
+    assert remove_containers() == 0, "Failed to remove containers"
+    for image in images:
+        assert remove_image(image) == 0, "Failed to remove test image"
 
 
 # to add mock and change password
 class TestDockerDriver(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # logzio_url = "{0}/?token={1}".format("https://listener.logz.io:8071", "sCvFJmZlhxgCwSnRglhmXoIDpMxkMOlr")
         assert subprocess_cmd('cd ..; sudo make all') == 0, "Failed to create plugin"
+        assert subprocess_cmd('sudo docker plugin set {} LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT=1s'
+                              .format(plugin_name)) == 0, "Failed to set dokcer duration time plugin"
         assert subprocess_cmd('sudo docker plugin enable {}'.format(plugin_name)) == 0, "Failed to enable plugin"
         assert subprocess_cmd('sudo service docker restart') == 0, "Failed to enable plugin"
 
-    def _test_one_container(self):
+    @classmethod
+    def tearDownClass(cls):
+        assert subprocess_cmd('cd ..; sudo make clean') == 0, "Failed to remove plugin"
+
+    def setUp(self):
+        # TODO - change to github
+        self.logzio_listener = mock_listener.MockLogzioListener()
+        self.logzio_listener.clear_logs_buffer()
+        self.logzio_listener.clear_server_error()
+        self.url = "http://{0}:{1}".format(self.logzio_listener.get_host(), self.logzio_listener.get_port())
+
+    def test_one_container(self):
+        os.putenv("LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT", "1s")
+        # self.assertTrue(subprocess_cmd('export LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT=1s') == 0,
+        #                 "Failed to set drain duration")
         self.assertTrue(subprocess_cmd("sudo docker build -t test_one_container:latest --build-arg iterations=100"
                                        " --build-arg prefix=test --build-arg time=0 .") == 0,
                         "Fail to build test_one_container image")
         self.assertTrue(subprocess_cmd("sudo docker run --log-driver=logzio"
-                                       " --log-opt logzio-token=sCvFJmZlhxgCwSnRglhmXoIDpMxkMOlr"
-                                       " --log-opt logzio-url=https://listener.logz.io:8071"
+                                       " --log-opt logzio-token=token"
+                                       " --log-opt logzio-url={}"
                                        " --log-opt logzio-dir-path=./test_one "
-                                       "test_one_container") == 0,
+                                       "test_one_container".format(self.url)) == 0,
                         "Fail to run test_one_container container")
-
+        time.sleep(1)
         # test ReadLogs
         exitcode, docker_id, err = get_exitcode_stdout_stderr('sudo docker ps -l -q')
         self.assertTrue(exitcode == 0, "Failed to find latest container, from test_one_container - {}".format(err))
@@ -83,17 +108,18 @@ class TestDockerDriver(unittest.TestCase):
         idx = 0
         for log in logs.splitlines():
             self.assertIn("test_{}".format(idx), log)
+            self.assertTrue(self.logzio_listener.find_log(log),
+                            "Failed to find {} in the mock listener".format(log))
             idx += 1
 
         # check queue location
         exitcode, path, err = \
-            get_exitcode_stdout_stderr('sudo find /var/lib/docker/plugins/ -name test -type d')
+            get_exitcode_stdout_stderr('sudo find /var/lib/docker/plugins/ -name test_one -type d')
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
+        cleanup(["test_one_container"])
 
-        # add check logs at mock
-
-    def _test_multi_containers_same_logger(self):
-        num_containers = 5
+    def test_multi_containers_same_logger(self):
+        num_containers = 1
         for i in xrange(num_containers):
             self.assertTrue(subprocess_cmd("sudo docker build -t test_multi_containers_same_logger{0}:latest"
                                            " --build-arg iterations=10"
@@ -101,13 +127,13 @@ class TestDockerDriver(unittest.TestCase):
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_same_logger{}".format(i))
             self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
-                                           " --log-opt logzio-token=sCvFJmZlhxgCwSnRglhmXoIDpMxkMOlr"
-                                           " --log-opt logzio-url=https://listener.logz.io:8071"
+                                           " --log-opt logzio-token=token"
+                                           " --log-opt logzio-url={0}"
                                            " --log-opt logzio-dir-path=./test_multi_same "
-                                           "test_multi_containers_same_logger{}".format(i)) == 0,
-                            "Fail to run test_multi_containers_same_logger container number {}".format(i))
+                                           "test_multi_containers_same_logger{1}".format(self.url, i)) == 0,
+                            "Failed to run test_multi_containers_same_logger container number {}".format(i))
 
-        time.sleep(60)
+        time.sleep(40)
         # test ReadLogs
         exitcode, dockers_id, err = get_exitcode_stdout_stderr('sudo docker ps -n {} -q'.format(num_containers))
         self.assertTrue(exitcode == 0, "Failed to find latest container - {}".format(err))
@@ -121,8 +147,9 @@ class TestDockerDriver(unittest.TestCase):
             idx = 0
             for log in logs.splitlines():
                 self.assertIn("multi_test_containers_same_logger{0}_{1}"
-                              .format(num_containers - container_number - 1, idx)
-                              , log)
+                              .format(num_containers - container_number - 1, idx), log)
+                self.assertTrue(self.logzio_listener.find_log(log),
+                                "Failed to find {} in the mock listener".format(log))
                 idx += 1
 
         # check queue location
@@ -130,19 +157,19 @@ class TestDockerDriver(unittest.TestCase):
             get_exitcode_stdout_stderr('sudo find /var/lib/docker/plugins/ -name test_multi_same -type d')
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
 
-        # add check logs at mock
+        cleanup(["test_multi_containers_same_logger{0}".format(i) for i in xrange(num_containers)])
 
-    def _test_kill_container(self):
+    def test_kill_container(self):
         self.assertTrue(subprocess_cmd("sudo docker build -t test_kill_container:latest"
                                        " --build-arg iterations=10000"
                                        " --build-arg prefix=test_kill_container "
                                        "--build-arg time=0 .") == 0,
                         "Failed to build image test_kill_container")
         self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
-                                       " --log-opt logzio-token=sCvFJmZlhxgCwSnRglhmXoIDpMxkMOlr"
-                                       " --log-opt logzio-url=https://listener.logz.io:8071"
+                                       " --log-opt logzio-token=token"
+                                       " --log-opt logzio-url={}"
                                        " --log-opt logzio-dir-path=./test_kill_container "
-                                       "test_kill_container") == 0,
+                                       "test_kill_container".format(self.url)) == 0,
                         "Failed to run test_kill_container container ")
 
         exitcode, docker_name, err = get_exitcode_stdout_stderr('sudo docker ps -l --format "{{.Names}}"')
@@ -155,10 +182,9 @@ class TestDockerDriver(unittest.TestCase):
             get_exitcode_stdout_stderr('sudo find /var/lib/docker/plugins/ -name test_kill_container -type d')
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
 
-        # add check logs at mock
+        cleanup(["test_kill_container"])
 
-    def _test_multi_containers_different_logger(self):
-        mock = mock_listener.MockLogzioListener()
+    def test_multi_containers_different_logger(self):
         num_containers = 5
         for i in xrange(num_containers):
             self.assertTrue(subprocess_cmd("sudo docker build -t test_multi_containers_different_logger{0}:latest"
@@ -167,13 +193,15 @@ class TestDockerDriver(unittest.TestCase):
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_different_logger{}".format(i))
             self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
-                                           " --log-opt logzio-token={0}"
-                                           " --log-opt logzio-url=https://listener.logz.io:8071"
+                                           " --log-opt logzio-token=token{0}"
+                                           " --log-opt logzio-url={1}"
                                            " --log-opt logzio-dir-path=./test_multi_containers_different_logger "
-                                           "test_multi_containers_different_logger{0}".format(i)) == 0,
-                            "Failed to run test_multi_containers_different_logger container number {}".format(i))
+                                           "test_multi_containers_different_logger{0}"
+                                           .format(i, self.url)) == 0,
+                            "Failed to run test_multi_containers_different_logger container number {}"
+                            .format(i))
 
-        time.sleep(60)
+        time.sleep(40)
         # test ReadLogs
         exitcode, dockers_id, err = get_exitcode_stdout_stderr('sudo docker ps -n {} -q'.format(num_containers))
         self.assertTrue(exitcode == 0, "Failed to find latest containers - {}".format(err))
@@ -187,24 +215,41 @@ class TestDockerDriver(unittest.TestCase):
             idx = 0
             for log in logs.splitlines():
                 self.assertIn("test_multi_containers_different_logger{0}_{1}"
-                              .format(num_containers - container_number - 1, idx)
-                              , log)
+                              .format(num_containers - container_number - 1, idx), log)
+                self.assertTrue(self.logzio_listener.find_log(log),
+                                "Failed to find {} in the mock listener".format(log))
                 idx += 1
-
-                self.assertTrue(mock.find_log(log), "Failed to find {} in the mock listener".format(log))
 
         # check queue location
         exitcode, path, err = \
             get_exitcode_stdout_stderr('sudo find /var/lib/docker/plugins/ -name test_multi_containers_different_logger'
                                        ' -type d')
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
+        cleanup(["test_multi_containers_different_logger{0}".format(i) for i in xrange(num_containers)])
 
-    def _test_daemon_global_configuration(self):
+    def test_daemon_global_configuration(self):
         self.assertTrue(subprocess_cmd("sudo docker build -t test_daemon_global_configuration:latest"
                                        " --build-arg iterations=100"
-                                       " --build-arg prefix=test_kill_container "
+                                       " --build-arg prefix=test_daemon_global_configuration "
                                        "--build-arg time=0 .") == 0,
                         "Failed to build image test_deamon_global_configuration")
+        import io
+        try:
+            to_unicode = unicode
+        except NameError:
+            to_unicode = str
+
+        with io.open('daemon.json', 'w', encoding='utf8') as outfile:
+            str_ = json.dumps({
+                                  "log-driver": "logzio",
+                                  "log-opts": {
+                                    "logzio-token": "token",
+                                    "logzio-url": "{}".format(self.url),
+                                    "logzio-dir-path": "./test_deamon_global_configuration"
+                                    }
+                              }, indent=4, sort_keys=True, separators=(',', ': '), ensure_ascii=False)
+            outfile.write(to_unicode(str_))
+
         self.assertTrue(subprocess_cmd('sudo cp ./daemon.json /etc/docker/') == 0,
                         "Failed to copy daemon config file")
         self.assertTrue(subprocess_cmd('sudo service docker restart') == 0,
@@ -217,10 +262,24 @@ class TestDockerDriver(unittest.TestCase):
                                        '-name test_daemon_global_configuration -type d')
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
 
-        # add check logs at mock
-
         self.assertTrue(subprocess_cmd('sudo rm /etc/docker/daemon.json') == 0,
                         "Failed to delete daemon config file")
+        # test ReadLogs
+        exitcode, docker_id, err = get_exitcode_stdout_stderr('sudo docker ps -l -q')
+        self.assertTrue(exitcode == 0, "Failed to find latest container, test_daemon_global_configuration - {}"
+                        .format(err))
+        exitcode, logs, err = get_exitcode_stdout_stderr('sudo docker logs {}'.format(docker_id))
+        self.assertTrue(exitcode == 0, "Failed to show latest logs {}".format(err))
+
+        time.sleep(1)
+        idx = 0
+        for log in logs.splitlines():
+            self.assertIn("test_daemon_global_configuration_{}".format(idx), log)
+            self.assertTrue(self.logzio_listener.find_log(log),
+                            "Failed to find {} in the mock listener".format(log))
+            idx += 1
+
+        cleanup(["test_daemon_global_configuration"])
 
 
 if __name__ == '__main__':

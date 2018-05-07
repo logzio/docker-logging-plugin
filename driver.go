@@ -222,12 +222,13 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	urlStr, _ := loggerInfo.Config[logzioUrl]
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
+	fmt.Printf("url %s token %s dirpath %s\n", urlStr, token, dir)//todo - delete
 	lsender, err := logzio.New(token,
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
 		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir,string(os.PathSeparator), hashCode)),
 		logzio.SetDrainDuration(drainDuration))
-	logrus.Info("Creating new logger for container %s\n", loggerInfo.ContainerID)
+	logrus.Debugf("Creating new logger for container %s\n", loggerInfo.ContainerID)
 	return lsender, err
 }
 
@@ -295,6 +296,7 @@ func (logziol *logzioLogger) sendToLogzio(){
 			} else if err := logziol.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
 			}
+
 		}else{
 			logziol.logzioSender.Stop()
 			logziol.lock.Lock()

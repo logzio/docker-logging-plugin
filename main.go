@@ -18,7 +18,7 @@ var logLevels = map[string]logrus.Level{
 }
 
 func main() {
-	logrus.Info("Plugin socket is located at %s\n", socketName) // TODO - delete
+	logrus.Debugf("Plugin socket is located at %s\n", socketName)
 	levelVal := os.Getenv("LOG_LEVEL")
 	if levelVal == "" {
 		levelVal = "info"

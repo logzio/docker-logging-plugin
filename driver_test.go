@@ -105,7 +105,7 @@ func TestSendingString(t *testing.T){
 		},
 	}
 
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestSendingJson(t *testing.T){
 		},
 	}
 
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestSendingNoTag(t *testing.T) {
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestTimerSendingNotExpired(t *testing.T){
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestTimerSendingExpired(t *testing.T){
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestPartialSendingString(t *testing.T){
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -537,7 +537,7 @@ func TestPartialSendingJson(t *testing.T){
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -626,7 +626,7 @@ func TestDrainAfterClosed(t *testing.T){
 		t.Fatal(err)
 	}
 
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}
@@ -679,7 +679,7 @@ func TestServerIsDown(t *testing.T){
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
-	logziol, _, err := newLogzioLogger(info, nil, "0")
+	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
 	}

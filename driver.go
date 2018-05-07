@@ -85,6 +85,7 @@ type logzioMessage struct{
 }
 
 type logzioLogger struct{
+	logger.Logger
     closed             bool
     closedChannel      chan int
 	closedDriverCond   *sync.Cond
@@ -223,7 +224,6 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	urlStr, _ := loggerInfo.Config[logzioUrl]
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
-	fmt.Printf("url %s token %s dirpath %s\n", urlStr, token, dir)//todo - delete
 	lsender, err := logzio.New(token,
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
@@ -243,17 +243,17 @@ func hash(args ...string) string{
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (logger.Logger, *logzio.LogzioSender, error){
+func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (*logzioLogger, error){
 	optToken := loggerInfo.Config[logzioToken]
 
 	hostname, err := setHostname(loggerInfo)
-	if err != nil{ return nil, nil, err }
+	if err != nil{ return nil, err }
 
 	extra, err := setExtras(loggerInfo)
-	if err != nil { return nil, nil, err }
+	if err != nil { return nil, err }
 
 	tags, err := setTag(loggerInfo)
-    if err != nil { return nil, nil, err }
+    if err != nil { return nil, err }
 
     format := setFormat(loggerInfo)
 
@@ -272,7 +272,7 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
         Extra:      extra,
     }
     logzioSender, err := newLogzioSender(loggerInfo, optToken, sender, hashCode)
-    if err != nil {return nil, nil, err}
+    if err != nil {return nil, err}
 
     logziol := &logzioLogger{
         closedChannel:      make(chan int),
@@ -285,7 +285,7 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
 	}
 
     go logziol.sendToLogzio()
-    return logziol, logzioSender, nil
+    return logziol, nil
 }
 
 func (logziol *logzioLogger) sendToLogzio(){
@@ -428,17 +428,16 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 
 	// notify the user if we are using previous configurations.
 	sender := d.checkHashCodeExists(hashCode, logCtx.Config[logzioToken])
-	logziol, finalSender, err := newLogzioLogger(logCtx, sender, hashCode)
+	logziol, err := newLogzioLogger(logCtx, sender, hashCode)
 	if err != nil {
 		return errors.Wrap(err, "error creating logzio logger")
 	}
-
 	d.mu.Lock()
 	lf := &logPair{jsonl, logziol, f, logCtx}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
 	if sender == nil{
-		d.senders[logCtx.Config[logzioToken]].sender = finalSender
+		d.senders[logCtx.Config[logzioToken]].sender = logziol.logzioSender
 		d.senders[logCtx.Config[logzioToken]].info = logCtx
 		d.senders[logCtx.Config[logzioToken]].hashCode = hashCode
 	}

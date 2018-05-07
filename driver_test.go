@@ -26,6 +26,9 @@ func TestValidateDriverOpt(t *testing.T){//TODO - update cases
 		logzioType:			"logzioType",
 		logzioUrl:			"logzioUrl",
 		logzioDirPath:		fmt.Sprintf("./%s", t.Name()),
+		envRegex:			"reg",
+		dockerLabels:		"label",
+		dockerEnv:			"env",
 	}
 
 	info := logger.Info{
@@ -59,7 +62,7 @@ func TestMissingToken(t *testing.T){
 func TestNoSuchLogOpt(t *testing.T){
 	conf := map[string]string{
 		logzioFormat: 		"json",
-		logzioLogSource:	 "logzioSource",
+		logzioLogSource:	"logzioSource",
 		logzioTag: 			"logzioTag",
 		logzioToken:		"logzioToken",
 		logzioType:			"logzioType",
@@ -135,8 +138,8 @@ func TestSendingString(t *testing.T){
 	if sm.Host != hostname ||
 		sm.LogSource != "stdout" ||
 		sm.Tags != info.ContainerID ||
-		sm.Type != "" ||
-		sm.Time != fmt.Sprintf("%f", float64(str.Timestamp.UnixNano())/float64(time.Second)) {
+		sm.Type != defaultSourceType ||
+		sm.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
 	}
 	if sm.Extra["envKey"] != "envValue" || sm.Extra["labelKey"] != "labelValue"{
@@ -207,8 +210,8 @@ func TestSendingJson(t *testing.T){
 	if jm.Host != hostname ||
 		jm.LogSource != "stdout" ||
 		jm.Tags != info.ContainerID ||
-		jm.Type != "" ||
-		jm.Time != fmt.Sprintf("%f", float64(jstr.Timestamp.UnixNano())/float64(time.Second)){
+		jm.Type != defaultSourceType ||
+		jm.Time != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
 	}
 
@@ -272,9 +275,9 @@ func TestSendingNoTag(t *testing.T) {
 	if sm.Host != hostname ||
 		sm.LogSource != "stdout" ||
 		sm.Tags != "" ||
-		sm.Type != "" ||
+		sm.Type != defaultSourceType ||
 		sm.Extra != nil ||
-		sm.Time != fmt.Sprintf("%f", float64(str.Timestamp.UnixNano())/float64(time.Second)){
+		sm.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
 	}
 	if sm.Message != "string"{
@@ -510,7 +513,7 @@ func TestPartialSendingString(t *testing.T){
 	if sMsg.Message != "string" ||
 		sMsg.LogSource != "stdout" ||
 		sMsg.Host != hostname||
-		sMsg.Time != fmt.Sprintf("%f", float64(str.Timestamp.UnixNano())/float64(time.Second)) ||
+		sMsg.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
 		sMsg.Tags != info.ContainerID{
 			t.Fatal("Expecting messages to be the same")
 	}
@@ -527,6 +530,7 @@ func TestPartialSendingJson(t *testing.T){
 			logzioToken:	mock.Token(),
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+			logzioType:		"type",
 		},
 		ContainerID:        "containeriid",
 		ContainerName:      "/container_name",
@@ -590,8 +594,8 @@ func TestPartialSendingJson(t *testing.T){
 	if jm.Host != hostname ||
 		jm.LogSource != "stdout" ||
 		jm.Tags != info.ContainerID ||
-		jm.Type != "" ||
-		jm.Time != fmt.Sprintf("%f", float64(jstr.Timestamp.UnixNano())/float64(time.Second)){
+		jm.Type != "type" ||
+		jm.Time != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
 	}
 

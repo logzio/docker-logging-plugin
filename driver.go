@@ -54,6 +54,7 @@ const(
 
     defaultFormat           	= 	"text"
     driverName              	= 	"logzio"
+    defaultSourceType			=	"logzio-docker-driver"
     jsonFormat              	= 	"json"
 )
 
@@ -258,7 +259,7 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
 
     sourceType, ok := loggerInfo.Config[logzioType]
 	if !ok{
-		sourceType = "logzio-docker-driver"
+		sourceType = defaultSourceType
 	}
 	logSource := loggerInfo.Config[logzioLogSource]
     streamSize := getEnvInt(envChannelSize, defaultStreamChannelSize)

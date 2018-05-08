@@ -91,6 +91,7 @@ func TestSendingString(t *testing.T){
 			logzioToken:	mock.Token(),
 			logzioFormat: 	defaultFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+			logzioLogAttr:  `{"num":6.13,"str":"str"}`,
 			logzioTag:		"{{.ImageName}}",
 			dockerLabels:	"labelKey",
 			envRegex:		"^envKey",
@@ -135,19 +136,22 @@ func TestSendingString(t *testing.T){
 	}
 	// check string message
 	sm := mock.messages[0]
-	if sm.Host != hostname ||
-		sm.LogSource != "stdout" ||
-		sm.Tags != info.ContainerID ||
-		sm.Type != defaultSourceType ||
-		sm.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
+	if sm["hostname"] != hostname ||
+		sm["log_source"] != "stdout" ||
+		sm["tags"] != info.ContainerID ||
+		sm["type"] != defaultSourceType ||
+		sm["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
 	}
-	if sm.Extra["envKey"] != "envValue" || sm.Extra["labelKey"] != "labelValue"{
-		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", sm.Extra)
+	if sm["envKey"] != "envValue" || sm["labelKey"] != "labelValue"{
+		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", sm)
 	}
 
-	if sm.Message != "string"{
-		t.Fatalf("Failed string message, not a string: %s", sm.Message)
+	if sm["num"] != 6.13 || sm["str"] != "str"{
+		t.Fatalf("Failed string message, one of the attributes fields is wrong. %+v\n", sm)
+	}
+	if sm["message"] != "string"{
+		t.Fatalf("Failed string message, not a string: %s", sm["message"])
 	}
 }
 
@@ -207,21 +211,94 @@ func TestSendingJson(t *testing.T){
 	}
 	// check json message
 	jm := mock.messages[0]
-	if jm.Host != hostname ||
-		jm.LogSource != "stdout" ||
-		jm.Tags != info.ContainerID ||
-		jm.Type != defaultSourceType ||
-		jm.Time != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano){
-		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
+	if jm["hostname"] != hostname ||
+		jm["log_source"] != "stdout" ||
+		jm["tags"] != info.ContainerID ||
+		jm["type"] != defaultSourceType ||
+		jm["driver_timestamp"] != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano){
+		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", jm)
 	}
-
-	if jm.Extra["envKey"] != "envValue" || jm.Extra["labelKey"] != "labelValue"{
-		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", jm.Extra)
+	if jm["envKey"] != "envValue" || jm["labelKey"] != "labelValue"{
+		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", jm)
 	}
 
 	// casting message to a map
-	if jm.Message.(map[string]interface{})["key"] != "value"{
-		t.Fatalf("Failed json message, not a json: %v", jm.Message)
+	if jm["message"].(map[string]interface{})["key"] != "value"{
+		t.Fatalf("Failed json message, not a json: %v", jm["message"])
+	}
+}
+
+func TestMultiLine(t *testing.T){
+	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
+	go mock.Serve()
+	defer mock.Close()
+	info := logger.Info{
+		Config: map[string]string{
+			logzioUrl:   	mock.URL(),
+			logzioToken:	mock.Token(),
+			logzioFormat: 	defaultFormat,
+			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
+			logzioLogAttr:  `{"num":6.13,"str":"str"}`,
+			logzioTag:		"{{.ImageName}}",
+			dockerLabels:	"labelKey",
+			envRegex:		"^envKey",
+		},
+		ContainerID:        "containeriid",
+		ContainerName:      "/container_name",
+		ContainerImageID:   "contaimageid",
+		ContainerImageName: "container_image_name",
+		ContainerEnv:		[]string{"envKey=envValue"},
+		ContainerLabels: 	map[string]string{
+			"labelKey": "labelValue",
+		},
+	}
+
+	logziol, err := newLogzioLogger(info, nil, "0")
+	if err != nil{
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(info.Config[logzioDirPath])
+	plmd := &backend.PartialLogMetaData{
+		Last:	true,
+		ID:		info.ContainerID,
+	}
+	str := &logger.Message{
+		Line: 		[]byte("str\ning"),
+		Source:  	"stdout",
+		Timestamp: 	time.Now(),
+		PLogMetaData: plmd,
+	}
+	if err := logziol.Log(str); err != nil{
+		t.Fatalf("Failed Log string: %s", err)
+	}
+
+	err = logziol.Close()
+	if err != nil{
+		t.Fatal(err)
+	}
+
+	hostname, err := info.Hostname()
+	if err != nil{
+		t.Fatal(err)
+	}
+	// check string message
+	sm := mock.messages[0]
+	if sm["hostname"] != hostname ||
+		sm["log_source"] != "stdout" ||
+		sm["tags"] != info.ContainerID ||
+		sm["type"] != defaultSourceType ||
+		sm["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
+		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
+	}
+	if sm["envKey"] != "envValue" || sm["labelKey"] != "labelValue"{
+		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", sm)
+	}
+
+	if sm["num"] != 6.13 || sm["str"] != "str"{
+		t.Fatalf("Failed string message, one of the attributes fields is wrong. %+v\n", sm)
+	}
+	if sm["message"] != "str\ning"{
+		t.Fatalf("Failed string message, not a string: %s", sm["message"])
 	}
 }
 
@@ -272,16 +349,15 @@ func TestSendingNoTag(t *testing.T) {
 	}
 	// check string message
 	sm := mock.messages[0]
-	if sm.Host != hostname ||
-		sm.LogSource != "stdout" ||
-		sm.Tags != "" ||
-		sm.Type != defaultSourceType ||
-		sm.Extra != nil ||
-		sm.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
+	if sm["hostname"] != hostname ||
+		sm["log_source"] != "stdout" ||
+		sm["type"] != defaultSourceType ||
+		sm["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
 		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
 	}
-	if sm.Message != "string"{
-		t.Fatalf("Failed string message, not a string: %s", sm.Message)
+
+	if sm["message"] != "string"{
+		t.Fatalf("Failed string message, not a string: %s", sm["message"])
 	}
 }
 
@@ -354,11 +430,11 @@ func TestTimerSendingNotExpired(t *testing.T){
 	}
 	// sanity check
 	firstMsg, secondMsg := mock.messages[0], mock.messages[1]
-	if firstMsg.Message != secondMsg.Message ||
-		firstMsg.LogSource != secondMsg.LogSource ||
-		firstMsg.Host != secondMsg.Host||
-		firstMsg.Time != secondMsg.Time ||
-		firstMsg.Tags != secondMsg.Tags{
+	if firstMsg["message"] != secondMsg["message"] ||
+		firstMsg["log_source"] != secondMsg["log_source"] ||
+		firstMsg["hostname"] != secondMsg["hostname"]||
+		firstMsg["driver_timestamp"] != secondMsg["driver_timestamp"] ||
+		firstMsg["tags"] != secondMsg["tags"]{
 		t.Fatal("Expecting messages to be the same")
 	}
 }
@@ -430,11 +506,11 @@ func TestTimerSendingExpired(t *testing.T){
 	}
 	// sanity check
 	sMsg, jMsg := mock.messages[0], mock.messages[1]
-	if sMsg.Message != jMsg.Message ||
-		sMsg.LogSource != jMsg.LogSource ||
-		sMsg.Host != jMsg.Host||
-		sMsg.Time != jMsg.Time ||
-		sMsg.Tags != jMsg.Tags{
+	if sMsg["message"] != jMsg["message"] ||
+		sMsg["log_source"] != jMsg["log_source"] ||
+		sMsg["hostname"] != jMsg["hostname"]||
+		sMsg["driver_timestamp"] != jMsg["driver_timestamp"] ||
+		sMsg["tags"] != jMsg["tags"]{
 		t.Fatal("Expecting messages to be the same")
 	}
 }
@@ -510,11 +586,11 @@ func TestPartialSendingString(t *testing.T){
 	}
 	// sanity check
 	sMsg := mock.messages[0]
-	if sMsg.Message != "string" ||
-		sMsg.LogSource != "stdout" ||
-		sMsg.Host != hostname||
-		sMsg.Time != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
-		sMsg.Tags != info.ContainerID{
+	if sMsg["message"] != "string" ||
+		sMsg["log_source"] != "stdout" ||
+		sMsg["hostname"] != hostname||
+		sMsg["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
+		sMsg["tags"] != info.ContainerID{
 			t.Fatal("Expecting messages to be the same")
 	}
 }
@@ -591,17 +667,16 @@ func TestPartialSendingJson(t *testing.T){
 	}
 	// check json message
 	jm := mock.messages[0]
-	if jm.Host != hostname ||
-		jm.LogSource != "stdout" ||
-		jm.Tags != info.ContainerID ||
-		jm.Type != "type" ||
-		jm.Time != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano){
+	if 	jm["log_source"] != "stdout" ||
+		jm["hostname"] != hostname||
+		jm["driver_timestamp"] != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
+		jm["tags"] != info.ContainerID{
 		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
 	}
 
 	// casting message to a map
-	if jm.Message.(map[string]interface{})["key"] != "value"{
-		t.Fatalf("Failed json message, not a json: %v", jm.Message)
+	if jm["message"].(map[string]interface{})["key"] != "value"{
+		t.Fatalf("Failed json message, not a json: %v", jm["message"])
 	}
 }
 
@@ -654,8 +729,8 @@ func TestDrainAfterClosed(t *testing.T){
 
 	// sanity check
 	for i:=0; i<5; i++{
-		if mock.messages[i].Message != fmt.Sprintf("%s%d", "str", i){
-			t.Fatalf("message %g not matching message %d", mock.messages[i].Message, i)
+		if mock.messages[i]["message"] != fmt.Sprintf("%s%d", "str", i){
+			t.Fatalf("message %g not matching message %d", mock.messages[i]["message"], i)
 		}
 	}
 }

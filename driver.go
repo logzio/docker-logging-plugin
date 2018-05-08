@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"github.com/docker/docker/api/types/backend"
 	"strings"
+	"github.com/fatih/structs"
 )
 
 
@@ -38,6 +39,7 @@ const(
     logzioUrl                   =   "logzio-url"
     logzioDirPath				= 	"logzio-dir-path"
     logzioLogSource				= 	"logzio-source"
+	logzioLogAttr				= 	"logzio-attributes"
 
     envLogsDrainTimeout    		=   "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
 	envChannelSize				=   "LOGZIO_DRIVER_CHANNEL_SIZE"
@@ -75,13 +77,12 @@ type logPair struct {
 }
 
 type logzioMessage struct{
-    Message     interface{}         `json:"message"`
-    Host        string              `json:"hostname"`
-    Type        string              `json:"type,omitempty"`
-    LogSource   string              `json:"log_source,omitempty"`
-    Time        string              `json:"driver_timestamp"`
-    Tags        string              `json:"tags,omitempty"`
-    Extra       map[string]string   `json:"extra,omitempty"`
+    Message     interface{}         	`structs:"message"`
+    Host        string              	`structs:"hostname"`
+    Type        string              	`structs:"type,omitempty"`
+    LogSource   string              	`structs:"log_source,omitempty"`
+    Time        string              	`structs:"driver_timestamp"`
+    Tags        string              	`structs:"tags,omitempty"`
 }
 
 type logzioLogger struct{
@@ -93,8 +94,8 @@ type logzioLogger struct{
     lock               sync.RWMutex
     logFormat          string
     maxMsgBufferSize   int
-    msg                *logzioMessage
-	msgStream          chan *logzioMessage
+    msg                map[string]interface{}
+	msgStream          chan map[string]interface{}
 	partialBuffers	   map[string]*bytes.Buffer
     url                string
 }
@@ -128,6 +129,7 @@ func validateDriverOpt(loggerInfo logger.Info) (string, error){
 		case envRegex:
 		case dockerLabels:
 		case dockerEnv:
+		case logzioLogAttr:
         default:
             return "", fmt.Errorf("wrong log-opt: '%s' - %s", opt, loggerInfo.ContainerID)
         }
@@ -146,7 +148,7 @@ func validateDriverOpt(loggerInfo logger.Info) (string, error){
 	return hashCode, nil
 }
 
-func setTag(loggerInfo logger.Info) (string, error){
+func Tag(loggerInfo logger.Info) (string, error){
 	tag := ""
 	var err error
 	if tagTemplate, ok := loggerInfo.Config[logzioTag]; !ok || tagTemplate != "" {
@@ -158,7 +160,7 @@ func setTag(loggerInfo logger.Info) (string, error){
 	return tag, nil
 }
 
-func setHostname(loggerInfo logger.Info) (string, error){
+func Hostname(loggerInfo logger.Info) (string, error){
     // https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
     hostname, err := loggerInfo.Hostname()
     if err != nil{
@@ -167,7 +169,7 @@ func setHostname(loggerInfo logger.Info) (string, error){
     return hostname, nil
 }
 
-func setExtras(loggerInfo logger.Info) (map[string]string, error){
+func Extras(loggerInfo logger.Info) (map[string]string, error){
     // https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
     extra, err := loggerInfo.ExtraAttributes(nil)
     if err != nil {
@@ -176,7 +178,21 @@ func setExtras(loggerInfo logger.Info) (map[string]string, error){
     return extra, nil
 }
 
-func setFormat(loggerInfo logger.Info) string {
+func Attributes(loggerInfo logger.Info) (map[string]interface{}){
+	attrMap := make(map[string]interface{})
+	attrStr, ok := loggerInfo.Config[logzioLogAttr]
+	if !ok{
+		return nil
+	}
+	err := json.Unmarshal([]byte(attrStr), &attrMap)
+	if err != nil {
+		logrus.Info("Failed to extract log attributes, please verify the format is correct")
+		return nil
+	}
+	return attrMap
+}
+
+func Format(loggerInfo logger.Info) string {
 	format, ok := loggerInfo.Config[logzioFormat]
 	if !ok{
 		format = defaultFormat
@@ -246,16 +262,18 @@ func hash(args ...string) string{
 func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (*logzioLogger, error){
 	optToken := loggerInfo.Config[logzioToken]
 
-	hostname, err := setHostname(loggerInfo)
+	hostname, err := Hostname(loggerInfo)
 	if err != nil{ return nil, err }
 
-	extra, err := setExtras(loggerInfo)
+	extra, err := Extras(loggerInfo)
 	if err != nil { return nil, err }
 
-	tags, err := setTag(loggerInfo)
+	tags, err := Tag(loggerInfo)
     if err != nil { return nil, err }
 
-    format := setFormat(loggerInfo)
+    format := Format(loggerInfo)
+
+    attr := Attributes(loggerInfo)
 
     sourceType, ok := loggerInfo.Config[logzioType]
 	if !ok{
@@ -264,13 +282,20 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
 	logSource := loggerInfo.Config[logzioLogSource]
     streamSize := getEnvInt(envChannelSize, defaultStreamChannelSize)
 	maxMsgBufferSize := getEnvInt(envMaxMsgBufferSize, defaultMaxMsgBufferSize)
-    defaultMsg := &logzioMessage{
+    defaultMsg := structs.Map(&logzioMessage{
         Host:       hostname,
 		LogSource:	logSource,
         Type: 		sourceType,
         Tags:       tags,
-        Extra:      extra,
-    }
+    })
+    for key, value := range attr{
+		defaultMsg[key] = value
+	}
+
+	for key, value := range extra{
+		defaultMsg[key] = value
+	}
+
     logzioSender, err := newLogzioSender(loggerInfo, optToken, sender, hashCode)
     if err != nil {return nil, err}
 
@@ -280,7 +305,7 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
         logFormat:          format,
         maxMsgBufferSize:   maxMsgBufferSize,
         msg:                defaultMsg,
-    	msgStream:          make(chan *logzioMessage, streamSize),
+    	msgStream:          make(chan map[string]interface{}, streamSize),
     	partialBuffers:		make(map[string]*bytes.Buffer),
 	}
 
@@ -311,7 +336,7 @@ func (logziol *logzioLogger) sendToLogzio(){
 	}
 }
 
-func (logziol *logzioLogger) sendMessageToChannel(msg *logzioMessage) error{
+func (logziol *logzioLogger) sendMessageToChannel(msg map[string]interface{}) error{
     logziol.lock.RLock()
     defer logziol.lock.RUnlock()
     // if driver is closed return error
@@ -322,44 +347,64 @@ func (logziol *logzioLogger) sendMessageToChannel(msg *logzioMessage) error{
     return nil
 }
 
-func (logziol *logzioLogger) Log(msg *logger.Message) error{
-	if len(msg.Line) == 0{
+func (logziol *logzioLogger) Log(msg *logger.Message) error {
+	if len(msg.Line) == 0 {
 		return nil
 	}
 	buf, ok := logziol.partialBuffers[msg.PLogMetaData.ID]
-	if !ok{
-		logziol.partialBuffers[msg.PLogMetaData.ID]  = bytes.NewBuffer(make([]byte, logziol.maxMsgBufferSize))
+	if !ok {
+		logziol.partialBuffers[msg.PLogMetaData.ID] = bytes.NewBuffer(make([]byte, logziol.maxMsgBufferSize))
 		buf = logziol.partialBuffers[msg.PLogMetaData.ID]
 	}
 
 	_, err := buf.Write(msg.Line)
-	if err != nil{
+	if err != nil {
 		return err
 	}
-	if !msg.PLogMetaData.Last{
+	if !msg.PLogMetaData.Last {
 		return nil
 	}
 	tBuf := bytes.Trim(buf.Bytes(), "\x00")
-
-	logMessage := *logziol.msg
-    logMessage.Time = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
-	logMessage.LogSource = msg.Source
-    format := logziol.logFormat
-    if format == defaultFormat{
-        logMessage.Message = string(tBuf)
-    }else{
-        // use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
-        var jsonLogLine json.RawMessage
-    	if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
-    		logMessage.Message = &jsonLogLine
-    	} else {
-    		// don't try to fight it
-    		logMessage.Message = string(tBuf)
-    	}
-    }
+	logMessage := make(map[string]interface{})
+	for index, element := range logziol.msg{
+		logMessage[index] = element
+	}
+	logMessage["driver_timestamp"] = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
+	logMessage["log_source"] = msg.Source
+	format := logziol.logFormat
+	if format == defaultFormat {
+		logMessage["message"] = string(tBuf)
+	} else {
+		// use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
+		var jsonLogLine json.RawMessage
+		if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
+			logMessage["message"] = &jsonLogLine
+			logMessage["Codec"] = "json"
+		} else {
+			// don't try to fight it
+			logMessage["message"] = string(tBuf)
+		}
+	}
+	//logMessage := *logziol.msg
+    //logMessage.Time = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
+	//logMessage.LogSource = msg.Source
+    //format := logziol.logFormat
+    //if format == defaultFormat{
+    //    logMessage.Message = string(tBuf)
+    //}else{
+    //    // use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
+    //    var jsonLogLine json.RawMessage
+    //	if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
+    //		logMessage.Message = &jsonLogLine
+    //		logMessage.Codec = "json"
+    //	} else {
+    //		// don't try to fight it
+    //		logMessage.Message = string(tBuf)
+    //	}
+    //}
 
 	buf.Reset()
-	err = logziol.sendMessageToChannel(&logMessage)
+	err = logziol.sendMessageToChannel(logMessage)
     return err
 }
 

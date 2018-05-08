@@ -13,7 +13,7 @@ import (
 
 type testHTTPMock struct {
 	ln	 				*net.TCPListener
-	messages        	[]*logzioMessage
+	messages        	[]map[string]interface{}
 	batch				int
 	test 				*testing.T
 	statusCodes			[]int
@@ -67,17 +67,17 @@ func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		jsonStart := 0
 		for jsonEnd := 0; jsonEnd < len(body); jsonEnd++ {
 			if jsonEnd == len(body)-2 || (body[jsonEnd] == '}' && body[jsonEnd+2] == '{') {
-				var message logzioMessage
+				var message map[string]interface{}
 				err = json.Unmarshal(body[jsonStart:jsonEnd+1], &message)
 				if err != nil {
 					m.test.Log(string(body[jsonStart : jsonEnd+1]))
 					m.test.Fatal(err)
 				}
 				m.test.Logf("mock received message: %s", string(string(body[jsonStart : jsonEnd+1])))
-				m.messages = append(m.messages, &message)
+				m.messages = append(m.messages, message)
 				jsonStart = jsonEnd + 1
 				if m.lastLog != ""{
-					if message.Message == m.lastLog{
+					if message["message"] == m.lastLog{
 						m.lastMessageTime <- lastMessageTime
 					}
 				}

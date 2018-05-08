@@ -385,23 +385,6 @@ func (logziol *logzioLogger) Log(msg *logger.Message) error {
 			logMessage["message"] = string(tBuf)
 		}
 	}
-	//logMessage := *logziol.msg
-    //logMessage.Time = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
-	//logMessage.LogSource = msg.Source
-    //format := logziol.logFormat
-    //if format == defaultFormat{
-    //    logMessage.Message = string(tBuf)
-    //}else{
-    //    // use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
-    //    var jsonLogLine json.RawMessage
-    //	if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
-    //		logMessage.Message = &jsonLogLine
-    //		logMessage.Codec = "json"
-    //	} else {
-    //		// don't try to fight it
-    //		logMessage.Message = string(tBuf)
-    //	}
-    //}
 
 	buf.Reset()
 	err = logziol.sendMessageToChannel(logMessage)

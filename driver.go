@@ -22,7 +22,7 @@ import (
 	"github.com/tonistiigi/fifo"
 	"crypto/sha1"
 	"encoding/hex"
-	"github.com/idohalevi/logzio-go"
+	"github.com/dougEfresh/logzio-go"
 	"bytes"
 	"github.com/docker/docker/api/types/backend"
 	"strings"

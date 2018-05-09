@@ -76,6 +76,8 @@ class TestDockerDriver(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # in case daemon test failed and we didn't had a chance to delete the file
+        subprocess_cmd('sudo rm /etc/docker/daemon.json')
         subprocess_cmd('cd ..; sudo make clean')
 
     def setUp(self):

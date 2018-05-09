@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 # should match makefile name
-plugin_name = "logzio-logging-plugin:latest"
+plugin_name = "logzio/logzio-logging-plugin:latest"
 
 
 def debug(message):
@@ -89,10 +89,10 @@ class TestDockerDriver(unittest.TestCase):
         self.assertTrue(subprocess_cmd("sudo docker build -t test_one_container:latest --build-arg iterations=100"
                                        " --build-arg prefix=test --build-arg time=0 .") == 0
                         , "Fail to build test_one_container image")
-        self.assertTrue(subprocess_cmd("sudo docker run --log-driver=logzio --log-opt logzio-token=token "
+        self.assertTrue(subprocess_cmd("sudo docker run --log-driver={} --log-opt logzio-token=token "
                                        "--log-opt logzio-url={} "
                                        "--log-opt logzio-dir-path=./test_one "
-                                       "test_one_container".format(self.url)) == 0,
+                                       "test_one_container".format(plugin_name, self.url)) == 0,
                         "Fail to run test_one_container container")
         time.sleep(1)
         # test ReadLogs
@@ -121,12 +121,12 @@ class TestDockerDriver(unittest.TestCase):
                                            " --build-arg prefix=multi_test_containers_same_logger{0} "
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_same_logger{}".format(i))
-            self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
+            self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={0}"
                                            " --log-opt logzio-token=token"
-                                           " --log-opt logzio-url={0}"
+                                           " --log-opt logzio-url={1}"
                                            " --log-opt logzio-dir-path=./test_multi_same "
-                                           "test_multi_containers_same_logger{1}".format(self.url, i)) == 0,
-                            "Failed to run test_multi_containers_same_logger container number {}".format(i))
+                                           "test_multi_containers_same_logger{2}".format(plugin_name, self.url, i)) == 0
+                            , "Failed to run test_multi_containers_same_logger container number {}".format(i))
 
         time.sleep(40)
         # test ReadLogs
@@ -160,11 +160,11 @@ class TestDockerDriver(unittest.TestCase):
                                        " --build-arg prefix=test_kill_container "
                                        "--build-arg time=0 .") == 0,
                         "Failed to build image test_kill_container")
-        self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
+        self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={}"
                                        " --log-opt logzio-token=token"
                                        " --log-opt logzio-url={}"
                                        " --log-opt logzio-dir-path=./test_kill_container "
-                                       "test_kill_container".format(self.url)) == 0,
+                                       "test_kill_container".format(plugin_name, self.url)) == 0,
                         "Failed to run test_kill_container container ")
 
         exitcode, docker_name, err = get_exitcode_stdout_stderr('sudo docker ps -l --format "{{.Names}}"')
@@ -187,12 +187,12 @@ class TestDockerDriver(unittest.TestCase):
                                            " --build-arg prefix=test_multi_containers_different_logger{0} "
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_different_logger{}".format(i))
-            self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver=logzio"
-                                           " --log-opt logzio-token=token{0}"
-                                           " --log-opt logzio-url={1}"
+            self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={0}"
+                                           " --log-opt logzio-token=token{1}"
+                                           " --log-opt logzio-url={2}"
                                            " --log-opt logzio-dir-path=./test_multi_containers_different_logger "
-                                           "test_multi_containers_different_logger{0}"
-                                           .format(i, self.url)) == 0,
+                                           "test_multi_containers_different_logger{1}"
+                                           .format(plugin_name, i, self.url)) == 0,
                             "Failed to run test_multi_containers_different_logger container number {}"
                             .format(i))
 
@@ -236,7 +236,7 @@ class TestDockerDriver(unittest.TestCase):
 
         with io.open('daemon.json', 'w', encoding='utf8') as outfile:
             str_ = json.dumps({
-                                  "log-driver": "logzio",
+                                  "log-driver": "{}".format(plugin_name),
                                   "log-opts": {
                                     "logzio-token": "token",
                                     "logzio-url": "{}".format(self.url),

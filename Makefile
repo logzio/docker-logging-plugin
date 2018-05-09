@@ -1,5 +1,5 @@
 # Plugin parameters
-PLUGIN_NAME=logzio-logging-plugin
+PLUGIN_NAME=logzio/logzio-logging-plugin
 PLUGIN_TAG=latest
 
 all: clean docker rootfs create

@@ -3,10 +3,7 @@ import logging
 import subprocess
 import unittest
 import shlex
-
-import os
-
-import mock_listener
+import tests.mockLogzioListener.listener as mock
 from subprocess import Popen, PIPE
 
 
@@ -81,8 +78,7 @@ class TestDockerDriver(unittest.TestCase):
         subprocess_cmd('cd ..; sudo make clean')
 
     def setUp(self):
-        # TODO - change to github
-        self.logzio_listener = mock_listener.MockLogzioListener()
+        self.logzio_listener = mock.MockLogzioListener()
         self.logzio_listener.clear_logs_buffer()
         self.logzio_listener.clear_server_error()
         self.url = "http://{0}:{1}".format(self.logzio_listener.get_host(), self.logzio_listener.get_port())

@@ -1,7 +1,7 @@
 {
   "description": "Logz.io logging plugin",
   "documentation": "https://github.com/logzio/Docker-Logging-Driver",
-  "entrypoint": ["/bin/logzio-logging-driver-plugin"],
+  "entrypoint": ["/bin/logzio-logging-plugin"],
   "network": {
     "type": "host"
   },

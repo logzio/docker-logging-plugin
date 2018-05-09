@@ -8,4 +8,5 @@ ENV PREFIX=$prefix
 ARG time
 ENV TIME=$time
 
+
 CMD python ./my_script.py -i $ITERATIONS -t $TIME -p $PREFIX

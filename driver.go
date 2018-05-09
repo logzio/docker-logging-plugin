@@ -88,7 +88,6 @@ type logzioMessage struct{
 type logzioLogger struct{
 	logger.Logger
     closed             bool
-    closedChannel      chan int
 	closedDriverCond   *sync.Cond
     logzioSender       *logzio.LogzioSender
     lock               sync.RWMutex
@@ -300,7 +299,6 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
     if err != nil {return nil, err}
 
     logziol := &logzioLogger{
-        closedChannel:      make(chan int),
         logzioSender:		logzioSender,
         logFormat:          format,
         maxMsgBufferSize:   maxMsgBufferSize,
@@ -493,13 +491,15 @@ func (d *driver) StopLogging(file string) error {
 func consumeLog(lf *logPair) {
 	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 	defer dec.Close()
+	defer func(){
+		lf.stream.Close()
+		lf.jsonl.Close()
+	}()
 	var buf logdriver.LogEntry
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF  || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed"){
 				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
-				lf.stream.Close()
-				lf.jsonl.Close()
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)

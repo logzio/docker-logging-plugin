@@ -1,5 +1,5 @@
 # Plugin parameters
-PLUGIN_NAME=logzio
+PLUGIN_NAME=logzio-logging-plugin
 PLUGIN_TAG=latest
 
 all: clean docker rootfs create
@@ -9,7 +9,7 @@ clean:
 	rm -rf ./plugin
 
 docker:
-	@echo "### docker build: rootfs image with logzio-logging-driver-plugin"
+	@echo "### docker build: rootfs image with logzio-logging-plugin"
 	docker build -t ${PLUGIN_NAME}:rootfs .
 
 rootfs:

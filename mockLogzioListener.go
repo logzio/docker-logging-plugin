@@ -15,6 +15,7 @@ type testHTTPMock struct {
 	ln	 				*net.TCPListener
 	messages        	[]map[string]interface{}
 	batch				int
+	debug				bool
 	test 				*testing.T
 	statusCodes			[]int
 	token				string
@@ -34,6 +35,7 @@ func NewtestHTTPMock(t *testing.T, returnStatusCodes []int) *testHTTPMock {
 	return &testHTTPMock{
 		ln:         		ln,
 		batch:				0,
+		debug:				false,
 		test:           	t,
 		statusCodes:		returnStatusCodes,
 		token:				"123456789",
@@ -46,11 +48,17 @@ func (m *testHTTPMock) Serve() error {
 	return http.Serve(m.ln, m)
 }
 
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
 
 //type Handler interface {
 //	ServeHTTP(ResponseWriter, *Request)
 //}
 func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+
 	switch request.Method {
 	case http.MethodPost:
 		if fmt.Sprintf("%s%s", "http://",request.Host) != m.URL() {
@@ -73,7 +81,9 @@ func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 					m.test.Log(string(body[jsonStart : jsonEnd+1]))
 					m.test.Fatal(err)
 				}
-				m.test.Logf("mock received message: %s", string(string(body[jsonStart : jsonEnd+1])))
+				if m.debug{
+					m.test.Logf("mock received message: %s", string(string(body[jsonStart : jsonEnd+1])))
+				}
 				m.messages = append(m.messages, message)
 				jsonStart = jsonEnd + 1
 				if m.lastLog != ""{
@@ -126,4 +136,8 @@ func (m *testHTTPMock) Close() error {
 func (m *testHTTPMock) setStatusCode(status int){
 	m.constStatusCode = status
 	m.constStatusCodeFlag = true
+}
+
+func (m *testHTTPMock) setDebug(debug bool){
+	m.debug = debug
 }

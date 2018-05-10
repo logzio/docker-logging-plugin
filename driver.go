@@ -383,7 +383,6 @@ func (logziol *logzioLogger) Log(msg *logger.Message) error {
 			logMessage["message"] = string(tBuf)
 		}
 	}
-
 	buf.Reset()
 	err = logziol.sendMessageToChannel(logMessage)
     return err

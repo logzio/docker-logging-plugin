@@ -228,10 +228,13 @@ func TestSendingJson(t *testing.T){
 	}
 }
 
-func TestMultiLine(t *testing.T){
-	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
+func TestStress(t *testing.T){
+	mock := NewtestHTTPMock(t, []int{http.StatusOK})
+	mock.setStatusCode(http.StatusOK)
 	go mock.Serve()
 	defer mock.Close()
+	os.Setenv(envLogsDrainTimeout, "1s")
+	defer os.Setenv(envLogsDrainTimeout, "5s")
 	info := logger.Info{
 		Config: map[string]string{
 			logzioUrl:   	mock.URL(),
@@ -252,7 +255,7 @@ func TestMultiLine(t *testing.T){
 			"labelKey": "labelValue",
 		},
 	}
-
+	totalLogs := 10000
 	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil{
 		t.Fatal(err)
@@ -262,16 +265,14 @@ func TestMultiLine(t *testing.T){
 		Last:	true,
 		ID:		info.ContainerID,
 	}
-	str := &logger.Message{
-		Line: 		[]byte("str\ning"),
-		Source:  	"stdout",
-		Timestamp: 	time.Now(),
-		PLogMetaData: plmd,
-	}
-	if err := logziol.Log(str); err != nil{
-		t.Fatalf("Failed Log string: %s", err)
+	for i:=0; i<totalLogs; i++{
+		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout",
+			Timestamp: time.Now(), PLogMetaData: plmd}); err != nil{
+			t.Fatalf("Failed Log string: %s", err)
+		}
 	}
 
+	time.Sleep(10 * time.Second)
 	err = logziol.Close()
 	if err != nil{
 		t.Fatal(err)
@@ -281,25 +282,29 @@ func TestMultiLine(t *testing.T){
 	if err != nil{
 		t.Fatal(err)
 	}
-	// check string message
-	sm := mock.messages[0]
-	if sm["hostname"] != hostname ||
-		sm["log_source"] != "stdout" ||
-		sm["tags"] != info.ContainerID ||
-		sm["type"] != defaultSourceType ||
-		sm["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano){
-		t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
-	}
-	if sm["envKey"] != "envValue" || sm["labelKey"] != "labelValue"{
-		t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", sm)
+
+	for i:=0; i<totalLogs; i++ {
+		// check string message
+		sm := mock.messages[i]
+		if sm["hostname"] != hostname ||
+			sm["log_source"] != "stdout" ||
+			sm["tags"] != info.ContainerID ||
+			sm["type"] != defaultSourceType{
+			t.Fatalf("Failed string message, one of the meata data is missing. %+v\n", sm)
+		}
+		if sm["envKey"] != "envValue" || sm["labelKey"] != "labelValue" {
+			t.Fatalf("Failed string message, one of the Extra fields is wrong. %+v\n", sm)
+		}
+
+		if sm["num"] != 6.13 || sm["str"] != "str" {
+			t.Fatalf("Failed string message, one of the attributes fields is wrong. %+v\n", sm)
+		}
+		testStr := fmt.Sprintf("%s%d", "str", i)
+		if sm["message"] != testStr{
+			t.Fatalf("Failed to find: %s instead found %s total size is %d", testStr, sm["message"], len(mock.messages))
+		}
 	}
 
-	if sm["num"] != 6.13 || sm["str"] != "str"{
-		t.Fatalf("Failed string message, one of the attributes fields is wrong. %+v\n", sm)
-	}
-	if sm["message"] != "str\ning"{
-		t.Fatalf("Failed string message, not a string: %s", sm["message"])
-	}
 }
 
 func TestSendingNoTag(t *testing.T) {

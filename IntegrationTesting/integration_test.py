@@ -87,7 +87,7 @@ class TestDockerDriver(unittest.TestCase):
         self.assertTrue(subprocess_cmd("sudo docker build -t test_one_container:latest --build-arg iterations=100"
                                        " --build-arg prefix=test --build-arg time=0 .") == 0
                         , "Fail to build test_one_container image")
-        self.assertTrue(subprocess_cmd("sudo docker run --log-driver={} --log-opt logzio-token=token "
+        self.assertTrue(subprocess_cmd("sudo docker run --log-driver={} --log-opt logzio-token=test_one_container "
                                        "--log-opt logzio-url={} "
                                        "--log-opt logzio-dir-path=./test_one "
                                        "test_one_container".format(plugin_name, self.url)) == 0,
@@ -111,7 +111,7 @@ class TestDockerDriver(unittest.TestCase):
         self.assertTrue(exitcode == 0, "Failed to find queue dir - {}".format(err))
         cleanup(["test_one_container"])
 
-    def _test_multi_containers_same_logger(self):
+    def test_multi_containers_same_logger(self):
         num_containers = 1
         for i in xrange(num_containers):
             self.assertTrue(subprocess_cmd("sudo docker build -t test_multi_containers_same_logger{0}:latest"
@@ -120,7 +120,7 @@ class TestDockerDriver(unittest.TestCase):
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_same_logger{}".format(i))
             self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={0}"
-                                           " --log-opt logzio-token=token"
+                                           " --log-opt logzio-token=test_multi_containers_same_logger"
                                            " --log-opt logzio-url={1}"
                                            " --log-opt logzio-dir-path=./test_multi_same "
                                            "test_multi_containers_same_logger{2}".format(plugin_name, self.url, i)) == 0
@@ -159,7 +159,7 @@ class TestDockerDriver(unittest.TestCase):
                                        "--build-arg time=0 .") == 0,
                         "Failed to build image test_kill_container")
         self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={}"
-                                       " --log-opt logzio-token=token"
+                                       " --log-opt logzio-token=test_kill_container"
                                        " --log-opt logzio-url={}"
                                        " --log-opt logzio-dir-path=./test_kill_container "
                                        "test_kill_container".format(plugin_name, self.url)) == 0,
@@ -186,7 +186,7 @@ class TestDockerDriver(unittest.TestCase):
                                            "--build-arg time=3 .".format(i)) == 0,
                             "Failed to build image test_multi_containers_different_logger{}".format(i))
             self.assertTrue(subprocess_cmd("sudo docker run -td --log-driver={0}"
-                                           " --log-opt logzio-token=token{1}"
+                                           " --log-opt logzio-token=test_multi_containers_different_logger{1}"
                                            " --log-opt logzio-url={2}"
                                            " --log-opt logzio-dir-path=./test_multi_containers_different_logger "
                                            "test_multi_containers_different_logger{1}"
@@ -236,7 +236,7 @@ class TestDockerDriver(unittest.TestCase):
             str_ = json.dumps({
                                   "log-driver": "{}".format(plugin_name),
                                   "log-opts": {
-                                    "logzio-token": "token",
+                                    "logzio-token": "test_daemon_global_configuration",
                                     "logzio-url": "{}".format(self.url),
                                     "logzio-dir-path": "./test_deamon_global_configuration"
                                     }

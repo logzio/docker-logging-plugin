@@ -26,6 +26,7 @@ func TestValidateDriverOpt(t *testing.T){//TODO - update cases
 		logzioType:			"logzioType",
 		logzioUrl:			"logzioUrl",
 		logzioDirPath:		fmt.Sprintf("./%s", t.Name()),
+		logzioLogAttr:		`{"num":6.13,"str":"str"}`,
 		envRegex:			"reg",
 		dockerLabels:		"label",
 		dockerEnv:			"env",

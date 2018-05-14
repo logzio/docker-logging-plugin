@@ -22,11 +22,11 @@ import (
 	"github.com/tonistiigi/fifo"
 	"crypto/sha1"
 	"encoding/hex"
-	"github.com/dougEfresh/logzio-go"
 	"bytes"
 	"github.com/docker/docker/api/types/backend"
 	"strings"
 	"github.com/fatih/structs"
+	"github.com/dougEfresh/logzio-go"
 )
 
 
@@ -40,6 +40,8 @@ const(
     logzioDirPath				= 	"logzio-dir-path"
     logzioLogSource				= 	"logzio-source"
 	logzioLogAttr				= 	"logzio-attributes"
+	logzioMultiline				=	"logzio-multiline"
+
 
     envLogsDrainTimeout    		=   "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
 	envChannelSize				=   "LOGZIO_DRIVER_CHANNEL_SIZE"
@@ -142,7 +144,8 @@ func validateDriverOpt(loggerInfo logger.Info) (string, error){
     if !ok{
         return "", fmt.Errorf("logz.io token is required")
     }
-	hashCode := hash(token, config[logzioDirPath], config[logzioFormat])
+
+	hashCode := hash(token, config[logzioDirPath])
 
 	return hashCode, nil
 }
@@ -377,7 +380,7 @@ func (logziol *logzioLogger) Log(msg *logger.Message) error {
 		var jsonLogLine json.RawMessage
 		if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
 			logMessage["message"] = &jsonLogLine
-			logMessage["Codec"] = "json"
+			logMessage["logzio_codec"] = "json"
 		} else {
 			// don't try to fight it
 			logMessage["message"] = string(tBuf)
@@ -472,7 +475,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	return nil
 }
 
-//todo - check handling closing shipper, pay attention to consumLog
+
 func (d *driver) StopLogging(file string) error {
 	logrus.WithField("file", file).Debugf("Stop logging")
 	d.mu.Lock()

@@ -22,11 +22,11 @@ import (
 	"github.com/tonistiigi/fifo"
 	"crypto/sha1"
 	"encoding/hex"
-	"github.com/dougEfresh/logzio-go"
 	"bytes"
 	"github.com/docker/docker/api/types/backend"
 	"strings"
 	"github.com/fatih/structs"
+	"github.com/dougEfresh/logzio-go"
 )
 
 
@@ -40,6 +40,7 @@ const(
     logzioDirPath				= 	"logzio-dir-path"
     logzioLogSource				= 	"logzio-source"
 	logzioLogAttr				= 	"logzio-attributes"
+	logzioMultiline				= 	"logzio-multiline"
 
     envLogsDrainTimeout    		=   "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
 	envChannelSize				=   "LOGZIO_DRIVER_CHANNEL_SIZE"
@@ -95,6 +96,7 @@ type logzioLogger struct{
     maxMsgBufferSize   int
     msg                map[string]interface{}
 	msgStream          chan map[string]interface{}
+	ml				   *Multiline
 	partialBuffers	   map[string]*bytes.Buffer
     url                string
 }
@@ -106,11 +108,30 @@ type senderConfigurations struct {
 }
 
 func newDriver() *driver{
+
 	return &driver{
 		logs: 		make(map[string]*logPair),
 		idx:  		make(map[string]*logPair),
 		senders:	make(map[string]*senderConfigurations),
 	}
+}
+
+func validateMultilineOpt(multilineConfig map[string]string, containerID string) error{
+	for opt := range multilineConfig{
+		switch opt {
+		case "match":
+		case "separator":
+		case "pattern":
+		case "negate":
+		case "timeout":
+		case "flushPtr":
+		case "maxLines":
+		case "maxBytes":
+		default:
+			return fmt.Errorf("wrong log-opt for multiline: '%s' - %s\n", opt, containerID)
+		}
+	}
+	return nil
 }
 
 func validateDriverOpt(loggerInfo logger.Info) (string, error){
@@ -129,6 +150,7 @@ func validateDriverOpt(loggerInfo logger.Info) (string, error){
 		case dockerLabels:
 		case dockerEnv:
 		case logzioLogAttr:
+		case logzioMultiline:
         default:
             return "", fmt.Errorf("wrong log-opt: '%s' - %s", opt, loggerInfo.ContainerID)
         }
@@ -248,6 +270,26 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	return lsender, err
 }
 
+//if any error occur we will log it and continue without multiline support
+func getMultiline(loggerInfo logger.Info) *Multiline{
+	multilineConfigMap := make(map[string]string)
+	multilineConfig, ok := loggerInfo.Config[logzioMultiline]
+	if !ok{
+		return nil
+	}
+	err := json.Unmarshal([]byte(multilineConfig), &multilineConfigMap)
+	if err != nil {
+		logrus.Warn("Failed to extract multiline configurations, please verify the format is correct - will not use multiline")
+		return nil
+	}
+	if err := validateMultilineOpt(multilineConfigMap, loggerInfo.ContainerID); err != nil{
+		logrus.Warnf("Failed to extract multiline configurations, please verify the format is correct" +
+			" - will not use multiline - %s", err)
+	}
+	ml := NewMultiLine(multilineConfigMap)
+	return ml
+}
+
 func hash(args ...string) string{
 	var toHash string
 	for _, s := range args{
@@ -298,10 +340,13 @@ func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCo
     logzioSender, err := newLogzioSender(loggerInfo, optToken, sender, hashCode)
     if err != nil {return nil, err}
 
+    ml := getMultiline(loggerInfo)
+
     logziol := &logzioLogger{
         logzioSender:		logzioSender,
         logFormat:          format,
         maxMsgBufferSize:   maxMsgBufferSize,
+		ml:					ml,
         msg:                defaultMsg,
     	msgStream:          make(chan map[string]interface{}, streamSize),
     	partialBuffers:		make(map[string]*bytes.Buffer),
@@ -320,7 +365,6 @@ func (logziol *logzioLogger) sendToLogzio(){
 			} else if err := logziol.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
 			}
-
 		}else{
 			logziol.logzioSender.Stop()
 			logziol.lock.Lock()
@@ -345,6 +389,31 @@ func (logziol *logzioLogger) sendMessageToChannel(msg map[string]interface{}) er
     return nil
 }
 
+
+func (logziol *logzioLogger) parseLog(msg *logger.Message, line []byte) map[string]interface{}{
+	logMessage := make(map[string]interface{})
+	for index, element := range logziol.msg{
+		logMessage[index] = element
+	}
+	logMessage["driver_timestamp"] = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
+	logMessage["log_source"] = msg.Source
+	format := logziol.logFormat
+	if format == defaultFormat {
+		logMessage["message"] = string(line)
+	} else {
+		// use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
+		var jsonLogLine json.RawMessage
+		if err := json.Unmarshal(line, &jsonLogLine); err == nil {
+			logMessage["message"] = &jsonLogLine
+			logMessage["Codec"] = "json"
+		} else {
+			// do not try to fight it
+			logMessage["message"] = string(line)
+		}
+	}
+	return logMessage
+}
+
 func (logziol *logzioLogger) Log(msg *logger.Message) error {
 	if len(msg.Line) == 0 {
 		return nil
@@ -354,7 +423,7 @@ func (logziol *logzioLogger) Log(msg *logger.Message) error {
 		logziol.partialBuffers[msg.PLogMetaData.ID] = bytes.NewBuffer(make([]byte, logziol.maxMsgBufferSize))
 		buf = logziol.partialBuffers[msg.PLogMetaData.ID]
 	}
-
+	defer buf.Reset()
 	_, err := buf.Write(msg.Line)
 	if err != nil {
 		return err
@@ -363,31 +432,37 @@ func (logziol *logzioLogger) Log(msg *logger.Message) error {
 		return nil
 	}
 	tBuf := bytes.Trim(buf.Bytes(), "\x00")
-	logMessage := make(map[string]interface{})
-	for index, element := range logziol.msg{
-		logMessage[index] = element
+	var lines [][]byte
+	lines = append(lines, tBuf)
+	if logziol.ml != nil{
+		lines = nil
+		lines = logziol.getMultilineMsg(tBuf)
 	}
-	logMessage["driver_timestamp"] = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
-	logMessage["log_source"] = msg.Source
-	format := logziol.logFormat
-	if format == defaultFormat {
-		logMessage["message"] = string(tBuf)
-	} else {
-		// use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
-		var jsonLogLine json.RawMessage
-		if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
-			logMessage["message"] = &jsonLogLine
-			logMessage["Codec"] = "json"
-		} else {
-			// don't try to fight it
-			logMessage["message"] = string(tBuf)
-		}
+	for _, line := range lines{
+		logMessage := logziol.parseLog(msg, line)
+		err = logziol.sendMessageToChannel(logMessage)
+		return err
 	}
-	buf.Reset()
-	err = logziol.sendMessageToChannel(logMessage)
-    return err
+	return nil
 }
 
+func (logziol *logzioLogger) getMultilineMsg(line []byte) [][]byte{
+	now := time.Now()
+	var retLines [][]byte
+	if len(logziol.ml.Bytes()) == 0{
+		logziol.ml.setStartingTime(now)
+		return append(retLines, logziol.ml.Add(line))
+	}else{
+		delta := now.Sub(logziol.ml.StartTime())
+		if delta > logziol.ml.timeout{
+			retLine := logziol.ml.Flush()
+			retLines = append(retLines, retLine)
+			return append(retLines, logziol.ml.Add(line))
+		}else{
+			return append(retLines, logziol.ml.Add(line))
+		}
+	}
+}
 
 func (logziol *logzioLogger) Close() error {
 	logziol.lock.Lock()
@@ -405,6 +480,20 @@ func (logziol *logzioLogger) Close() error {
 
 func (logziol *logzioLogger) Name() string{
 	return driverName
+}
+
+func (d *driver) flushMultilines(){
+	for{
+		now := time.Now()
+		maxMultilineFlushTime := defaultTimeout * 2
+		for id, logger := range d.idx{
+			 logziol := logger.logziol.(logzioLogger)
+			 if now.Sub(logziol.ml.startTime) > logziol.ml.timeout{
+				 line := logziol.ml.Flush()
+				 logMessage := logziol.parseLog()
+			 }
+		}
+	}
 }
 
 func (d *driver) checkHashCodeExists(hashCode string, token string) *logzio.LogzioSender{

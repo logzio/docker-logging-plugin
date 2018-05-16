@@ -10,21 +10,19 @@ import (
 	"time"
 )
 
-
 type testHTTPMock struct {
-	ln	 				*net.TCPListener
-	messages        	[]map[string]interface{}
-	batch				int
-	debug				bool
-	test 				*testing.T
-	statusCodes			[]int
-	token				string
-	constStatusCodeFlag	bool
-	constStatusCode		int
-	lastMessageTime		chan time.Time
-	lastLog				string
+	batch               int
+	constStatusCode     int
+	constStatusCodeFlag bool
+	debug               bool
+	lastLog             string
+	lastMessageTime     chan time.Time
+	ln                  *net.TCPListener
+	messages            []map[string]interface{}
+	statusCodes         []int
+	test                *testing.T
+	token               string
 }
-
 
 func NewtestHTTPMock(t *testing.T, returnStatusCodes []int) *testHTTPMock {
 	laddr := &net.TCPAddr{IP: []byte{127, 0, 0, 1}, Port: 0, Zone: ""}
@@ -33,25 +31,18 @@ func NewtestHTTPMock(t *testing.T, returnStatusCodes []int) *testHTTPMock {
 		t.Fatal(err)
 	}
 	return &testHTTPMock{
-		ln:         		ln,
-		batch:				0,
-		debug:				false,
-		test:           	t,
-		statusCodes:		returnStatusCodes,
-		token:				"123456789",
-		lastMessageTime: 	make(chan time.Time, 5000),
+		ln:              ln,
+		batch:           0,
+		debug:           false,
+		test:            t,
+		statusCodes:     returnStatusCodes,
+		token:           "123456789",
+		lastMessageTime: make(chan time.Time, 5000),
 	}
 }
-
 
 func (m *testHTTPMock) Serve() error {
 	return http.Serve(m.ln, m)
-}
-
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
 }
 
 //type Handler interface {
@@ -61,7 +52,7 @@ func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 
 	switch request.Method {
 	case http.MethodPost:
-		if fmt.Sprintf("%s%s", "http://",request.Host) != m.URL() {
+		if fmt.Sprintf("%s%s", "http://", request.Host) != m.URL() {
 			m.test.Errorf("Wrong URL - %v", request.Host)
 		}
 		lastMessageTime := time.Now()
@@ -81,22 +72,22 @@ func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 					m.test.Log(string(body[jsonStart : jsonEnd+1]))
 					m.test.Fatal(err)
 				}
-				if m.debug{
-					m.test.Logf("mock received message: %s", string(string(body[jsonStart : jsonEnd+1])))
+				if m.debug {
+					m.test.Logf("mock received message: %s", string(string(body[jsonStart:jsonEnd+1])))
 				}
 				m.messages = append(m.messages, message)
 				jsonStart = jsonEnd + 1
-				if m.lastLog != ""{
-					if message["message"] == m.lastLog{
+				if m.lastLog != "" {
+					if message["message"] == m.lastLog {
 						m.lastMessageTime <- lastMessageTime
 					}
 				}
 			}
 		}
 
-		if m.constStatusCodeFlag{
+		if m.constStatusCodeFlag {
 			writer.WriteHeader(m.constStatusCode)
-		}else{
+		} else {
 			if m.batch > len(m.statusCodes) {
 				m.test.Fatalf("Not enough response status codes configured")
 			}
@@ -110,16 +101,15 @@ func (m *testHTTPMock) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	}
 }
 
-func (m *testHTTPMock) setLastLog(lastLog string){
+func (m *testHTTPMock) setLastLog(lastLog string) {
 	m.lastLog = lastLog
 }
 
-func (m *testHTTPMock) Token() string{
+func (m *testHTTPMock) Token() string {
 	return m.token
 }
 
-
-func (m *testHTTPMock) Batch() int{
+func (m *testHTTPMock) Batch() int {
 	return m.batch
 }
 
@@ -127,17 +117,16 @@ func (m *testHTTPMock) URL() string {
 	return "http://" + m.ln.Addr().String()
 }
 
-
 func (m *testHTTPMock) Close() error {
 	close(m.lastMessageTime)
 	return m.ln.Close()
 }
 
-func (m *testHTTPMock) setStatusCode(status int){
+func (m *testHTTPMock) setStatusCode(status int) {
 	m.constStatusCode = status
 	m.constStatusCodeFlag = true
 }
 
-func (m *testHTTPMock) setDebug(debug bool){
+func (m *testHTTPMock) setDebug(debug bool) {
 	m.debug = debug
 }

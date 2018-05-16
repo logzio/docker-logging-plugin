@@ -1,156 +1,184 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
-	"encoding/json"
+	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/logger/loggerutils"
-	protoio "github.com/gogo/protobuf/io"
-	"github.com/pkg/errors"
-	"github.com/Sirupsen/logrus"
-	"github.com/tonistiigi/fifo"
-	"crypto/sha1"
-	"encoding/hex"
-	"bytes"
-	"github.com/docker/docker/api/types/backend"
-	"strings"
-	"github.com/fatih/structs"
 	"github.com/dougEfresh/logzio-go"
+	"github.com/fatih/structs"
+	"github.com/pkg/errors"
+	"github.com/tonistiigi/fifo"
+
+	protoio "github.com/gogo/protobuf/io"
 )
 
+const (
+	//log-opt
+	logzioFormat    = "logzio-format"
+	logzioTag       = "logzio-tag"
+	logzioToken     = "logzio-token"
+	logzioType      = "logzio-type"
+	logzioURL       = "logzio-url"
+	logzioDirPath   = "logzio-dir-path"
+	logzioLogSource = "logzio-source"
+	logzioLogAttr   = "logzio-attributes"
 
-const(
-    //log-opt
-    logzioFormat                =   "logzio-format"
-    logzioTag                   =   "logzio-tag"
-    logzioToken                 =   "logzio-token"
-    logzioType                  =   "logzio-type"
-    logzioUrl                   =   "logzio-url"
-    logzioDirPath				= 	"logzio-dir-path"
-    logzioLogSource				= 	"logzio-source"
-	logzioLogAttr				= 	"logzio-attributes"
-	logzioMultiline				=	"logzio-multiline"
+	envLogsDrainTimeout           = "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
+	envChannelSize                = "LOGZIO_DRIVER_CHANNEL_SIZE"
+	envDiskThreshold              = "LOGZIO_DRIVER_DISK_THRESHOLD"
+	envMaxMsgBufferSize           = "LOGZIO_MAX_MSG_BUFFER_SIZE"
+	envPartialBufferTimerDuration = "LOGZIO_MAX_PARTIAL_BUFFER__SIZE"
 
+	envRegex     = "env-regex"
+	dockerLabels = "labels"
+	dockerEnv    = "env"
 
-    envLogsDrainTimeout    		=   "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT"
-	envChannelSize				=   "LOGZIO_DRIVER_CHANNEL_SIZE"
-	envDiskThreshold    		=   "LOGZIO_DRIVER_DISK_THRESHOLD"
-	envMaxMsgBufferSize			= 	"LOGZIO_MAX_MSG_BUFFER_SIZE"
-	envRegex					= 	"env-regex"
-	dockerLabels				=	"labels"
-	dockerEnv					=	"env"
+	defaultMaxMsgBufferSize           = 1024 * 1024
+	defaultLogsDrainTimeout           = time.Second * 5
+	defaultDiskThreshould             = 70
+	defaultStreamChannelSize          = 10 * 1000
+	defaultPartialBufferTimerDuration = time.Millisecond * 500
+	defaultFlushPartialBuffer         = time.Second * 5
 
-	defaultMaxMsgBufferSize     =	1024 * 1024
-    defaultLogsDrainTimeout 	= 	time.Second * 5
-    defaultDiskThreshould		= 	70
-    defaultStreamChannelSize	= 	10 * 1000
-
-    defaultFormat           	= 	"text"
-    driverName              	= 	"logzio"
-    defaultSourceType			=	"logzio-docker-driver"
-    jsonFormat              	= 	"json"
+	defaultFormat     = "text"
+	driverName        = "logzio"
+	defaultSourceType = "logzio-docker-driver"
+	jsonFormat        = "json"
 )
 
-
-type driver struct {
-	mu     	sync.Mutex
-	logs  	map[string]*logPair
-	idx    	map[string]*logPair
-	senders	map[string]*senderConfigurations
-	logger 	logger.Logger
+type Driver struct {
+	idx     map[string]*ContainerLoggersCtx
+	logger  logger.Logger
+	logs    map[string]*ContainerLoggersCtx
+	mu      sync.Mutex // Protecting concurrency access for driver's maps
+	senders map[string]*SenderConfigurations
 }
 
-type logPair struct {
-	jsonl      logger.Logger
-    logziol    logger.Logger
-	stream     io.ReadCloser
-	info       logger.Info
+type ContainerLoggersCtx struct {
+	info         logger.Info
+	jsonLogger   logger.Logger
+	logzioLogger LogzioLogger
+	stream       io.ReadCloser
 }
 
-type logzioMessage struct{
-    Message     interface{}         	`structs:"message"`
-    Host        string              	`structs:"hostname"`
-    Type        string              	`structs:"type,omitempty"`
-    LogSource   string              	`structs:"log_source,omitempty"`
-    Time        string              	`structs:"driver_timestamp"`
-    Tags        string              	`structs:"tags,omitempty"`
+type LogzioMessage struct {
+	Host      string      `structs:"hostname"`
+	Message   interface{} `structs:"message"`
+	LogSource string      `structs:"log_source,omitempty"`
+	Tags      string      `structs:"tags,omitempty"`
+	Time      string      `structs:"driver_timestamp"`
+	Type      string      `structs:"type,omitempty"`
 }
 
-type logzioLogger struct{
+type LogzioLogger struct {
 	logger.Logger
-    closed             bool
-	closedDriverCond   *sync.Cond
-    logzioSender       *logzio.LogzioSender
-    lock               sync.RWMutex
-    logFormat          string
-    maxMsgBufferSize   int
-    msg                map[string]interface{}
-	msgStream          chan map[string]interface{}
-	partialBuffers	   map[string]*bytes.Buffer
-    url                string
+	closed            bool
+	closedDriverCond  *sync.Cond
+	logzioSender      *logzio.LogzioSender
+	lock              sync.RWMutex
+	logFormat         string
+	maxMsgBufferSize  int
+	msg               map[string]interface{}
+	msgStream         chan map[string]interface{}
+	partialBufTimeout time.Duration
+	pBuf              *PartialBuffer
+	url               string
 }
 
-type senderConfigurations struct {
-	sender 				*logzio.LogzioSender
-	info   				logger.Info
-	hashCode			string
+type SenderConfigurations struct {
+	info     logger.Info
+	hashCode string
+	sender   *logzio.LogzioSender
 }
 
-func newDriver() *driver{
-	return &driver{
-		logs: 		make(map[string]*logPair),
-		idx:  		make(map[string]*logPair),
-		senders:	make(map[string]*senderConfigurations),
+func newDriver() *Driver {
+	driver := &Driver{
+		logs:    make(map[string]*ContainerLoggersCtx),
+		idx:     make(map[string]*ContainerLoggersCtx),
+		senders: make(map[string]*SenderConfigurations),
+	}
+	go driver.flushPartialBuffers()
+	return driver
+}
+
+func (d *Driver) flushPartialBuffers() {
+	timeout := defaultFlushPartialBuffer
+	for {
+		for containerID, containerLoggerInfo := range d.idx {
+			d.mu.Lock()
+			if _, ok := d.idx[containerID]; !ok {
+				continue
+			}
+			logzioLogger := containerLoggerInfo.logzioLogger
+			delta := time.Now().Sub(logzioLogger.pBuf.startTime)
+			if delta > logzioLogger.pBuf.timeout {
+				var msg logger.Message
+				msg.Line = logzioLogger.pBuf.buf
+				msg.Source = logzioLogger.pBuf.source
+				msg.Timestamp = time.Unix(0, logzioLogger.pBuf.timeNano)
+				msg.PLogMetaData = &backend.PartialLogMetaData{
+					Last: true,
+					ID:   containerID,
+				}
+
+				if err := logzioLogger.Log(&msg); err != nil {
+					logrus.WithField("id", containerID).WithError(err).WithField("message", msg).
+						Error("Logz.io logger:error writing log message")
+				}
+			}
+			d.mu.Unlock()
+		}
+		time.Sleep(timeout)
 	}
 }
 
-func validateDriverOpt(loggerInfo logger.Info) (string, error){
-    config := loggerInfo.Config
-    // Config in logger.info is map[string]string
-    for opt := range config{
-        switch opt {
-		case logzioFormat:
-        case logzioLogSource:
-        case logzioTag:
-        case logzioToken:
-        case logzioType:
-        case logzioUrl:
-		case logzioDirPath:
-		case envRegex:
-		case dockerLabels:
-		case dockerEnv:
-		case logzioLogAttr:
-        default:
-            return "", fmt.Errorf("wrong log-opt: '%s' - %s", opt, loggerInfo.ContainerID)
-        }
-    }
+func validateDriverOpt(loggerInfo logger.Info) (string, error) {
+	config := loggerInfo.Config
+	// Config in logger.info is map[string]string
+	for opt := range config {
+		switch opt {
+		case logzioFormat, logzioLogSource, logzioTag, logzioToken, logzioType, logzioURL, logzioDirPath,
+			envRegex, dockerLabels, dockerEnv, logzioLogAttr:
+		default:
+			return "", fmt.Errorf("wrong log-opt: '%s' - %s\n", opt, loggerInfo.ContainerID)
+		}
+	}
 	_, ok := config[logzioDirPath]
-	if !ok{
-		return "", fmt.Errorf("logz.io dir path is required. config: %v+", config)
+	if !ok {
+		return "", fmt.Errorf("logz.io dir path is required. config: %v+\n", config)
 	}
 
-    token, ok := config[logzioToken]
-    if !ok{
-        return "", fmt.Errorf("logz.io token is required")
-    }
+	token, ok := config[logzioToken]
+	if !ok {
+		return "", fmt.Errorf("logz.io token is required\n")
+	}
 
 	hashCode := hash(token, config[logzioDirPath])
 
 	return hashCode, nil
 }
 
-func Tag(loggerInfo logger.Info) (string, error){
+func getTags(loggerInfo logger.Info) (string, error) {
 	tag := ""
 	var err error
 	if tagTemplate, ok := loggerInfo.Config[logzioTag]; !ok || tagTemplate != "" {
@@ -162,98 +190,103 @@ func Tag(loggerInfo logger.Info) (string, error){
 	return tag, nil
 }
 
-func Hostname(loggerInfo logger.Info) (string, error){
-    // https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
-    hostname, err := loggerInfo.Hostname()
-    if err != nil{
-        return "", fmt.Errorf("%s: cannot access hostname to set source field", driverName)
-    }
-    return hostname, nil
+func getHostname(loggerInfo logger.Info) (string, error) {
+	// https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
+	hostname, err := loggerInfo.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("%s: cannot access hostname to set source field\n", driverName)
+	}
+	return hostname, nil
 }
 
-func Extras(loggerInfo logger.Info) (map[string]string, error){
-    // https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
-    extra, err := loggerInfo.ExtraAttributes(nil)
-    if err != nil {
-        return nil, err
-    }
-    return extra, nil
+func getExtras(loggerInfo logger.Info) (map[string]string, error) {
+	// https://github.com/moby/moby/blob/master/daemon/logger/loginfo.go
+	extra, err := loggerInfo.ExtraAttributes(nil)
+	if err != nil {
+		return nil, err
+	}
+	return extra, nil
 }
 
-func Attributes(loggerInfo logger.Info) (map[string]interface{}){
+func getAttributes(loggerInfo logger.Info) map[string]interface{} {
 	attrMap := make(map[string]interface{})
 	attrStr, ok := loggerInfo.Config[logzioLogAttr]
-	if !ok{
+	if !ok {
 		return nil
 	}
 	err := json.Unmarshal([]byte(attrStr), &attrMap)
 	if err != nil {
-		logrus.Info("Failed to extract log attributes, please verify the format is correct")
+		logrus.Info("Failed to extract log attributes, please verify the format is correct\n")
 		return nil
 	}
 	return attrMap
 }
 
-func Format(loggerInfo logger.Info) string {
+func getFormat(loggerInfo logger.Info) string {
 	format, ok := loggerInfo.Config[logzioFormat]
-	if !ok{
+	if !ok {
 		format = defaultFormat
 	}
 
 	if format == defaultFormat || format == jsonFormat {
 		return format
 	}
-	logrus.Error(fmt.Sprintf("%s is not part of the format options we support: %s, json", format, defaultFormat))
-	logrus.Info(fmt.Sprintf("Using default format instead: %s", defaultFormat))
+	logrus.Error(fmt.Sprintf("%s is not part of the format options we support: %s, json\n", format, defaultFormat))
+	logrus.Info(fmt.Sprintf("Using default format instead: %s\n", defaultFormat))
 	return defaultFormat
 }
 
-func getEnvInt(env string, dValue int) int{
+func getEnvInt(env string, dValue int) int {
 	eValue := os.Getenv(env)
 	if eValue == "" {
 		return dValue
 	}
 	retVal, err := strconv.ParseInt(eValue, 10, 32)
 	if err != nil {
-		logrus.Error(fmt.Sprintf("Error parsing %s timeout %s", env, err))
-		logrus.Info(fmt.Sprintf("Using default %s timeout %v", env, defaultLogsDrainTimeout))
+		logrus.Error(fmt.Sprintf("Error parsing %s timeout %s\n", env, err))
+		logrus.Info(fmt.Sprintf("Using default %s timeout %v\n", env, defaultLogsDrainTimeout))
 		return dValue
 	}
 	return int(retVal)
+}
+
+func getEnvDuration(env string, dValue time.Duration) time.Duration {
+	// Getenv retrieves the value of the environment variable named by the key.
+	// It returns the value, which will be empty if the variable is not present.
+	eDuration := os.Getenv(env)
+	retDuration := defaultLogsDrainTimeout
+	if eDuration != "" {
+		var err error
+		retDuration, err = time.ParseDuration(eDuration)
+		if err != nil {
+			logrus.Error(fmt.Sprintf("Error parsing drain timeout %s\n", err))
+			logrus.Info(fmt.Sprintf("Using default drain timeout %v\n", dValue))
+			retDuration = defaultLogsDrainTimeout
+		}
+	}
+	return retDuration
 }
 
 func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.LogzioSender, hashCode string) (*logzio.LogzioSender, error) {
 	if sender != nil {
 		return sender, nil
 	}
-	// Getenv retrieves the value of the environment variable named by the key.
-	// It returns the value, which will be empty if the variable is not present.
-	eDuration := os.Getenv(envLogsDrainTimeout)
-	drainDuration := defaultLogsDrainTimeout
-	if eDuration != "" {
-		var err error
-		drainDuration, err = time.ParseDuration(eDuration)
-		if err != nil {
-			logrus.Error(fmt.Sprintf("Error parsing drain timeout %s", err))
-			logrus.Info(fmt.Sprintf("Using default drain timeout %v", defaultLogsDrainTimeout))
-			drainDuration = defaultLogsDrainTimeout
-		}
-	}
-	urlStr, _ := loggerInfo.Config[logzioUrl]
+	drainDuration := getEnvDuration(envLogsDrainTimeout, defaultLogsDrainTimeout)
+	urlStr, _ := loggerInfo.Config[logzioURL]
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
 	lsender, err := logzio.New(token,
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
-		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir,string(os.PathSeparator), hashCode)),
+		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir, string(os.PathSeparator), hashCode)),
 		logzio.SetDrainDuration(drainDuration))
 	logrus.Debugf("Creating new logger for container %s\n", loggerInfo.ContainerID)
 	return lsender, err
 }
 
-func hash(args ...string) string{
+func hash(args ...string) string {
 	var toHash string
-	for _, s := range args{
+	for _, s := range args {
 		toHash += s
 	}
 	h := sha1.New()
@@ -261,172 +294,161 @@ func hash(args ...string) string{
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (*logzioLogger, error){
+func newLogzioLogger(loggerInfo logger.Info, sender *logzio.LogzioSender, hashCode string) (*LogzioLogger, error) {
 	optToken := loggerInfo.Config[logzioToken]
 
-	hostname, err := Hostname(loggerInfo)
-	if err != nil{ return nil, err }
+	hostname, err := getHostname(loggerInfo)
+	if err != nil {
+		return nil, err
+	}
 
-	extra, err := Extras(loggerInfo)
-	if err != nil { return nil, err }
+	extra, err := getExtras(loggerInfo)
+	if err != nil {
+		return nil, err
+	}
 
-	tags, err := Tag(loggerInfo)
-    if err != nil { return nil, err }
+	tags, err := getTags(loggerInfo)
+	if err != nil {
+		return nil, err
+	}
 
-    format := Format(loggerInfo)
+	format := getFormat(loggerInfo)
 
-    attr := Attributes(loggerInfo)
+	attr := getAttributes(loggerInfo)
 
-    sourceType, ok := loggerInfo.Config[logzioType]
-	if !ok{
+	sourceType, ok := loggerInfo.Config[logzioType]
+	if !ok {
 		sourceType = defaultSourceType
 	}
 	logSource := loggerInfo.Config[logzioLogSource]
-    streamSize := getEnvInt(envChannelSize, defaultStreamChannelSize)
+	streamSize := getEnvInt(envChannelSize, defaultStreamChannelSize)
 	maxMsgBufferSize := getEnvInt(envMaxMsgBufferSize, defaultMaxMsgBufferSize)
-    defaultMsg := structs.Map(&logzioMessage{
-        Host:       hostname,
-		LogSource:	logSource,
-        Type: 		sourceType,
-        Tags:       tags,
-    })
-    for key, value := range attr{
+	partialBufferTimeout := getEnvDuration(envPartialBufferTimerDuration, defaultPartialBufferTimerDuration)
+	defaultMsg := structs.Map(&LogzioMessage{
+		Host:      hostname,
+		LogSource: logSource,
+		Type:      sourceType,
+		Tags:      tags,
+	})
+	for key, value := range attr {
 		defaultMsg[key] = value
 	}
 
-	for key, value := range extra{
+	for key, value := range extra {
 		defaultMsg[key] = value
 	}
 
-    logzioSender, err := newLogzioSender(loggerInfo, optToken, sender, hashCode)
-    if err != nil {return nil, err}
-
-    logziol := &logzioLogger{
-        logzioSender:		logzioSender,
-        logFormat:          format,
-        maxMsgBufferSize:   maxMsgBufferSize,
-        msg:                defaultMsg,
-    	msgStream:          make(chan map[string]interface{}, streamSize),
-    	partialBuffers:		make(map[string]*bytes.Buffer),
+	logzioSender, err := newLogzioSender(loggerInfo, optToken, sender, hashCode)
+	if err != nil {
+		return nil, err
 	}
 
-    go logziol.sendToLogzio()
-    return logziol, nil
+	logzioLogger := &LogzioLogger{
+		logzioSender:      logzioSender,
+		logFormat:         format,
+		maxMsgBufferSize:  maxMsgBufferSize,
+		msg:               defaultMsg,
+		msgStream:         make(chan map[string]interface{}, streamSize),
+		partialBufTimeout: partialBufferTimeout,
+	}
+
+	go logzioLogger.sendToLogzio()
+	return logzioLogger, nil
 }
 
-func (logziol *logzioLogger) sendToLogzio(){
-    for{
-		msg, open := <-logziol.msgStream
-		if open{
+func (logzioLogger *LogzioLogger) sendToLogzio() {
+	for {
+		msg, open := <-logzioLogger.msgStream
+		if open {
 			if data, err := json.Marshal(msg); err != nil {
 				logrus.Error(fmt.Sprintf("Error marshalling json object: %s\n", err.Error()))
-			} else if err := logziol.logzioSender.Send(data); err != nil {
+			} else if err := logzioLogger.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
 			}
 
-		}else{
-			logziol.logzioSender.Stop()
-			logziol.lock.Lock()
-			logziol.logzioSender.CloseIdleConnections()
-			logziol.closed = true
-			logziol.closedDriverCond.Signal()
+		} else {
+			logzioLogger.logzioSender.Stop()
+			logzioLogger.lock.Lock()
+			logzioLogger.logzioSender.CloseIdleConnections()
+			logzioLogger.closed = true
+			logzioLogger.closedDriverCond.Signal()
 			// better to not use defer in a loop if possible
-			logziol.lock.Unlock()
+			logzioLogger.lock.Unlock()
 			break
 		}
 	}
 }
 
-func (logziol *logzioLogger) sendMessageToChannel(msg map[string]interface{}) error{
-    logziol.lock.RLock()
-    defer logziol.lock.RUnlock()
-    // if driver is closed return error
-    if logziol.closedDriverCond != nil{
-        return fmt.Errorf("can't send the log to the channel - driver is closed")
-    }
-    logziol.msgStream <- msg
-    return nil
+func (logzioLogger *LogzioLogger) sendMessageToChannel(msg map[string]interface{}) error {
+	logzioLogger.lock.RLock()
+	defer logzioLogger.lock.RUnlock()
+	// if Driver is closed return error
+	if logzioLogger.closedDriverCond != nil {
+		return fmt.Errorf("can't send the log to the channel - Driver is closed\n")
+	}
+	logzioLogger.msgStream <- msg
+	return nil
 }
 
-func (logziol *logzioLogger) Log(msg *logger.Message) error {
-	if len(msg.Line) == 0 {
-		return nil
-	}
-	buf, ok := logziol.partialBuffers[msg.PLogMetaData.ID]
-	if !ok {
-		logziol.partialBuffers[msg.PLogMetaData.ID] = bytes.NewBuffer(make([]byte, logziol.maxMsgBufferSize))
-		buf = logziol.partialBuffers[msg.PLogMetaData.ID]
-	}
-
-	_, err := buf.Write(msg.Line)
-	if err != nil {
-		return err
-	}
-	if !msg.PLogMetaData.Last {
-		return nil
-	}
-	tBuf := bytes.Trim(buf.Bytes(), "\x00")
+func (logzioLogger *LogzioLogger) Log(msg *logger.Message) error {
 	logMessage := make(map[string]interface{})
-	for index, element := range logziol.msg{
+	for index, element := range logzioLogger.msg {
 		logMessage[index] = element
 	}
 	logMessage["driver_timestamp"] = time.Unix(0, msg.Timestamp.UnixNano()).Format(time.RFC3339Nano)
 	logMessage["log_source"] = msg.Source
-	format := logziol.logFormat
+	format := logzioLogger.logFormat
 	if format == defaultFormat {
-		logMessage["message"] = string(tBuf)
+		logMessage["message"] = string(msg.Line)
 	} else {
 		// use of RawMessage: http://goinbigdata.com/how-to-correctly-serialize-json-string-in-golang/
 		var jsonLogLine json.RawMessage
-		if err := json.Unmarshal(tBuf, &jsonLogLine); err == nil {
+		if err := json.Unmarshal(msg.Line, &jsonLogLine); err == nil {
 			logMessage["message"] = &jsonLogLine
 			logMessage["logzio_codec"] = "json"
 		} else {
-			// don't try to fight it
-			logMessage["message"] = string(tBuf)
+			// do not try to fight it
+			logMessage["message"] = string(msg.Line)
 		}
 	}
-	buf.Reset()
-	err = logziol.sendMessageToChannel(logMessage)
-    return err
+	err := logzioLogger.sendMessageToChannel(logMessage)
+	return err
 }
 
-
-func (logziol *logzioLogger) Close() error {
-	logziol.lock.Lock()
-	defer logziol.lock.Unlock()
-	if logziol.closedDriverCond == nil {
-		logziol.closedDriverCond = sync.NewCond(&logziol.lock)
-		close(logziol.msgStream)
-		for !logziol.closed {
-			logziol.closedDriverCond.Wait()
+func (logzioLogger *LogzioLogger) Close() error {
+	logzioLogger.lock.Lock()
+	defer logzioLogger.lock.Unlock()
+	if logzioLogger.closedDriverCond == nil {
+		logzioLogger.closedDriverCond = sync.NewCond(&logzioLogger.lock)
+		close(logzioLogger.msgStream)
+		for !logzioLogger.closed {
+			logzioLogger.closedDriverCond.Wait()
 		}
 	}
 	return nil
 }
 
-
-func (logziol *logzioLogger) Name() string{
+func (logzioLogger *LogzioLogger) Name() string {
 	return driverName
 }
 
-func (d *driver) checkHashCodeExists(hashCode string, token string) *logzio.LogzioSender{
-	if _,ok := d.senders[token]; ok{
-		if hashCode != d.senders[token].hashCode{
+func (d *Driver) checkHashCodeExists(hashCode string, token string) *logzio.LogzioSender {
+	if _, ok := d.senders[token]; ok {
+		if hashCode != d.senders[token].hashCode {
 			logrus.Error(fmt.Sprintf("Can use only one configuration set per token: %+v\n", d.senders[token].info))
 		}
 		return d.senders[token].sender
 	}
-	sc := &senderConfigurations{}
+	sc := &SenderConfigurations{}
 	d.senders[token] = sc
 	return nil
 }
 
-func (d *driver) StartLogging(file string, logCtx logger.Info) error {
+func (d *Driver) StartLogging(file string, logCtx logger.Info) error {
 	d.mu.Lock()
 	if _, exists := d.logs[file]; exists {
 		d.mu.Unlock()
-		return fmt.Errorf("logger for %q already exists", file)
+		return fmt.Errorf("logger for %q already exists\n", file)
 	}
 	d.mu.Unlock()
 
@@ -435,37 +457,37 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(logCtx.LogPath), 0755); err != nil {
-		return errors.Wrapf(err, "error setting up logger dir")
+		return errors.Wrapf(err, "error setting up logger dir\n")
 	}
 
-	jsonl, err := jsonfilelog.New(logCtx)
+	jsonLogger, err := jsonfilelog.New(logCtx)
 	if err != nil {
-		return errors.Wrap(err, "error creating jsonfile logger")
+		return errors.Wrap(err, "error creating jsonfile logger\n")
 	}
 
 	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
-		return errors.Wrapf(err, "error opening logger fifo: %q", file)
+		return errors.Wrapf(err, "error opening logger fifo: %q\n", file)
 	}
 
 	hashCode, err := validateDriverOpt(logCtx)
-	if err != nil{
-		return errors.Wrap(err, "error in one of the logger options")
+	if err != nil {
+		return errors.Wrap(err, "error in one of the logger options\n")
 	}
 
 	// notify the user if we are using previous configurations.
 	sender := d.checkHashCodeExists(hashCode, logCtx.Config[logzioToken])
-	logziol, err := newLogzioLogger(logCtx, sender, hashCode)
+	logzioLogger, err := newLogzioLogger(logCtx, sender, hashCode)
 	if err != nil {
 		return errors.Wrap(err, "error creating logzio logger")
 	}
 	d.mu.Lock()
-	lf := &logPair{jsonl, logziol, f, logCtx}
+	lf := &ContainerLoggersCtx{logCtx, jsonLogger, *logzioLogger, f}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
-	if sender == nil{
-		d.senders[logCtx.Config[logzioToken]].sender = logziol.logzioSender
+	if sender == nil {
+		d.senders[logCtx.Config[logzioToken]].sender = logzioLogger.logzioSender
 		d.senders[logCtx.Config[logzioToken]].info = logCtx
 		d.senders[logCtx.Config[logzioToken]].hashCode = hashCode
 	}
@@ -475,70 +497,87 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	return nil
 }
 
-
-func (d *driver) StopLogging(file string) error {
+func (d *Driver) StopLogging(file string) error {
 	logrus.WithField("file", file).Debugf("Stop logging")
 	d.mu.Lock()
 	lf, ok := d.logs[file]
 	if ok {
-		logrus.Info(fmt.Sprintf("%s: Stopping logging driver for closed container %s.", driverName, lf.info.ContainerID))
+		logrus.Info(fmt.Sprintf("%s: Stopping logging Driver for closed container %s.", driverName, lf.info.ContainerID))
 		lf.stream.Close()
-		lf.jsonl.Close()
+		lf.jsonLogger.Close()
 		delete(d.logs, file)
 	}
 	d.mu.Unlock()
 	return nil
 }
 
-func consumeLog(lf *logPair) {
+func consumeLog(lf *ContainerLoggersCtx) {
 	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 	defer dec.Close()
-	defer func(){
+	defer func() {
 		lf.stream.Close()
-		lf.jsonl.Close()
+		lf.jsonLogger.Close()
 	}()
+	pBuf := &PartialBuffer{
+		startTime: time.Now(),
+		timeout:   lf.logzioLogger.partialBufTimeout,
+		maxBytes:  lf.logzioLogger.maxMsgBufferSize,
+	}
+	lf.logzioLogger.pBuf = pBuf
 	var buf logdriver.LogEntry
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
-			if err == io.EOF  || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed"){
+			if err == io.EOF || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed") {
+				if len(pBuf.buf) != 0 {
+					logrus.WithField("id", lf.info.ContainerID).WithError(err).
+						Warningf("Could not finish sending partial message before closing: %s\n", string(pBuf.buf))
+				}
 				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 		}
-		var msg logger.Message
-		msg.Line = buf.Line
-		msg.Source = buf.Source
-		msg.Timestamp = time.Unix(0, buf.TimeNano)
-		msg.PLogMetaData = &backend.PartialLogMetaData{
-			Last:    !buf.Partial,
-			ID:      lf.info.ContainerID,
-		}
+		tBuf := bytes.Trim(buf.Line, "\x00")
+		if len(tBuf) != 0 {
+			pBuf.Add(buf)
+			delta := time.Now().Sub(pBuf.startTime)
+			if !buf.Partial || delta > pBuf.timeout {
+				var msg logger.Message
+				msg.Line = pBuf.buf
+				msg.Source = buf.Source
+				msg.Timestamp = time.Unix(0, buf.TimeNano)
+				msg.PLogMetaData = &backend.PartialLogMetaData{
+					Last: !buf.Partial,
+					ID:   lf.info.ContainerID,
+				}
 
-		if err := lf.logziol.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
-			continue
-		}
-		if err := lf.jsonl.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
-			continue
+				if err := lf.logzioLogger.Log(&msg); err != nil {
+					logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).
+						Error("Logz.io logger:error writing log message")
+				}
+				if err := lf.jsonLogger.Log(&msg); err != nil {
+					logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).
+						Error("json logger: error writing log message")
+				}
+				pBuf.Reset()
+			}
 		}
 		buf.Reset()
 	}
 }
 
-func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCloser, error) {
+func (d *Driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCloser, error) {
 	d.mu.Lock()
 	lf, exists := d.idx[info.ContainerID]
 	d.mu.Unlock()
 	if !exists {
-		return nil, fmt.Errorf("logger does not exist for %s", info.ContainerID)
+		return nil, fmt.Errorf("logger does not exist for %s\n", info.ContainerID)
 	}
 
 	r, w := io.Pipe()
-	lr, ok := lf.jsonl.(logger.LogReader)
+	lr, ok := lf.jsonLogger.(logger.LogReader)
 	if !ok {
-		return nil, fmt.Errorf("logger does not support reading")
+		return nil, fmt.Errorf("logger does not support reading\n")
 	}
 
 	go func() {
@@ -559,7 +598,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 				buf.Line = msg.Line
 				buf.Partial = false
-				if msg.PLogMetaData != nil{
+				if msg.PLogMetaData != nil {
 					buf.Partial = !msg.PLogMetaData.Last
 				}
 				buf.TimeNano = msg.Timestamp.UnixNano()

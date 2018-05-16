@@ -1,2 +1,3 @@
 logzio-python-handler=2.0.9
 future=0.16.0
+retrying=1.3.3

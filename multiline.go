@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/docker/docker/api/types/plugins/logdriver"
+	"github.com/docker/docker/daemon/logger"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 	defaultMaxLines  = 500
 	defaultMaxBytes  = 400000
 	defaultTimeout	 = 5 * time.Second
-	defaultSeparator = ""
+	defaultSeparator = " "
 	defaultFlushPrt  = ""
 )
 
@@ -32,9 +32,7 @@ type Multiline struct {
 	buf				[]byte
 	numLines		int
 	debug			bool
-	last			[]byte
-	source			string
-	timeNano		int64
+	last			*logger.Message
 }
 
 func NewMultiLine(multilineConfig map[string]string) *Multiline{
@@ -132,11 +130,11 @@ func (ml *Multiline) Reset(){
 	ml.startTime = time.Now()
 }
 
-func (ml *Multiline) Add(entry logdriver.LogEntry) []byte{
+func (ml *Multiline) Add(msg *logger.Message)  (logger.Message, bool){
 	if ml.match == "after"{
-		return ml.matchAfter(entry)
+		return ml.matchAfter(msg)
 	}else{
-		return ml.matchBefore(entry)
+		return ml.matchBefore(msg)
 	}
 }
 
@@ -153,70 +151,66 @@ func (ml *Multiline) getMatch(line []byte, ptr string) bool{
 	return match
 }
 
-func (ml *Multiline) finalize() []byte{
-	if ml.maxBytes <= len(ml.buf) || ml.maxLines == ml.numLines || time.Now().Sub(ml.startTime) > ml.timeout{
-		retLine := ml.buf
-		ml.Reset()
-		return retLine
-	}
-	return nil
+func (ml *Multiline)Flush() logger.Message{
+	msg := *ml.last
+	msg.Line = ml.buf
+	ml.Reset()
+	return msg
 }
 
-func (ml *Multiline) matchAfter(entry logdriver.LogEntry)[]byte {
-	line := entry.Line
+func (ml *Multiline) finalize() (logger.Message, bool){
+	if ml.maxBytes <= len(ml.buf) || ml.maxLines == ml.numLines || time.Now().Sub(ml.startTime) > ml.timeout{
+		return ml.Flush(), true
+	}
+	return logger.Message{}, false
+}
+
+func (ml *Multiline) matchAfter(msg *logger.Message) (logger.Message, bool) {
+	line := msg.Line
 	// first read
 	if len(ml.buf) == 0 {
-		ml.addLine(line)
-		ml.timeNano = entry.TimeNano
-		ml.source = entry.Source
+		ml.addLine(msg)
 		return ml.finalize()
 	}
 	matches := ml.getMatch(line, ml.pattern)
 	if matches {
-		ml.addLine(line)
+		ml.addLine(msg)
 		return ml.finalize()
 	} else if ml.flushPtr != "" && ml.getMatch(line, ml.flushPtr) {
-		ml.addLine(line)
-		retLine := ml.buf
-		ml.Reset()
-		return retLine
+		ml.addLine(msg)
+		return ml.Flush(), true
 	}
-	retLine := ml.buf
-	ml.Reset()
-	ml.addLine(line)
-	return retLine
+	retMsg := ml.Flush()
+	ml.addLine(msg)
+	return retMsg, true
 }
 
-func (ml *Multiline) matchBefore(entry logdriver.LogEntry)[]byte {
-	line := entry.Line
+func (ml *Multiline) matchBefore(msg *logger.Message) (logger.Message, bool) {
+	line := msg.Line
 	matches := ml.getMatch(line, ml.pattern)
 	if matches {
 		if len(ml.buf) == 0{
-			ml.addLine(line)
-			ml.timeNano = entry.TimeNano
-			ml.source = entry.Source
+			ml.addLine(msg)
 			return ml.finalize()
 		}else {
-			retLine := ml.buf
-			ml.Reset()
-			ml.addLine(line)
-			return retLine
+			retMsg := ml.Flush()
+			ml.addLine(msg)
+			return retMsg, true
 		}
 	} else if ml.flushPtr != "" && ml.getMatch(line, ml.flushPtr) {
-		ml.addLine(line)
-		retLine := ml.buf
-		ml.Reset()
-		return retLine
+		ml.addLine(msg)
+		return ml.Flush(), true
 	}
 	if len(ml.buf) != 0{
-		ml.addLine(line)
+		ml.addLine(msg)
 		return ml.finalize()
 	}
-	return line
+	return *msg, true
 }
 
 // return true if line was added and we reached the size limit
-func (ml *Multiline) addLine(line []byte){
+func (ml *Multiline) addLine(msg *logger.Message){
+	line := msg.Line
 	sz := len(ml.buf)
 	addSeparator := sz > 0
 	if addSeparator {
@@ -239,7 +233,7 @@ func (ml *Multiline) addLine(line []byte){
 		ml.buf = append(tmp, line[:space]...)
 		ml.numLines++
 	}
-	ml.last = line
+	ml.last = msg
 }
 
 func (ml *Multiline) Bytes() []byte{
@@ -249,10 +243,4 @@ func (ml *Multiline) Bytes() []byte{
 
 func (ml *Multiline) StartTime() time.Time{
 	return ml.startTime
-}
-
-func (ml *Multiline) Flush() []byte{
-	retLine := ml.buf
-	ml.Reset()
-	return retLine
 }

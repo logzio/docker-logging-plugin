@@ -4,16 +4,18 @@ import (
 	"testing"
 	"strings"
 	"bytes"
+	"time"
 
-	"github.com/docker/docker/api/types/plugins/logdriver"
+	"github.com/docker/docker/daemon/logger"
 )
 
 
-var defaultEntry = &logdriver.LogEntry{
-	Source:   "",
-	TimeNano: 123456,
-	Line:     nil,
-	Partial:  false,
+var defaultMsg = &logger.Message{
+	Line:         nil,
+	Source:       "test",
+	Timestamp:    time.Now(),
+	Attrs:        nil,
+	PLogMetaData: nil,
 }
 
 func TestJaveStackTrace(t *testing.T){
@@ -32,14 +34,16 @@ func TestJaveStackTrace(t *testing.T){
 		maxBytes:   defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	lines := strings.Split(content, "\n")
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range lines{
-		entry.Line = []byte(line)
-		retVal := ml.Add(entry)
-		if retVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
+		msg.Line = []byte(line)
+		retVal, flush := ml.Add(msg)
+		if flush{
+			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal.Line))
 		}
 	}
 
@@ -62,13 +66,15 @@ func TestTimestamp(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		retVal := ml.Add(entry)
-		if retVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
+		msg.Line = []byte(line)
+		retVal, flush := ml.Add(msg)
+		if flush{
+			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal.Line))
 		}
 	}
 	contentStr := ""
@@ -93,13 +99,15 @@ func TestLineContinuations(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		retVal := ml.Add(entry)
-		if retVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
+		msg.Line = []byte(line)
+		retVal, flush := ml.Add(msg)
+		if flush{
+			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal.Line))
 		}
 	}
 	contentStr := ""
@@ -124,13 +132,15 @@ func TestApplicationEvents(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		retVal := ml.Add(entry)
-		if retVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
+		msg.Line = []byte(line)
+		retVal, flush := ml.Add(msg)
+		if flush{
+			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal.Line))
 		}
 	}
 	contentStr := ""
@@ -155,20 +165,20 @@ func TestTestMultilineAfter(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush{
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)
@@ -176,40 +186,6 @@ func TestTestMultilineAfter(t *testing.T){
 		t.Fatalf("Failed multiline - %s vs %s\n", string(retVal), contentStr)
 	}
 }
-
-////todo - ask josh
-//func TestTestMultilineBefore(t *testing.T){
-//	content := []string{"line1","\\line1.1 ","\\line1.2\n", "line2","\\line2.1","\\line2.2\n"}
-//	ml := Multiline{
-//		match:		"before",
-//		separator:	"",
-//		pattern: 	"\\$",
-//		negate: 	false,
-//		flushPtr: 	"",
-//		maxLines:	defaultMaxLines,
-//		maxBytes:	defaultMaxBytes,
-//		numLines:	0,
-//		debug:		true,
-//	}
-//	contentStr := ""
-//	for _, str := range content{
-//		contentStr += str
-//	}
-//	var retVal []byte
-//	for _, line := range content{
-//		tmpVal := ml.Add([]byte(line))
-//		if tmpVal != nil{
-//			retVal = append(retVal, tmpVal...)
-//		}else if tmpVal != nil{
-//			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
-//		}
-//	}
-//	retVal = append(retVal, ml.Bytes()...)
-//	fmt.Printf("%s\n", retVal) //todo delete
-//	if !bytes.Equal(retVal, []byte(contentStr)){
-//		t.Fatalf("Failed multiline - %s vs %s\n", string(retVal), contentStr)
-//	}
-//}
 
 func TestMultilineAfterNegate(t *testing.T){
 	content := []string{"-line1", " - line1.1", " - line1.2\n", "-line2",  " - line2.1", " - line2.2"}
@@ -223,20 +199,20 @@ func TestMultilineAfterNegate(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush{
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)
@@ -257,20 +233,20 @@ func TestMultilineBeforeNegate(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush{
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)
@@ -291,20 +267,20 @@ func TestMultilineAfterNegateFlushPattern(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
-	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+	msg := defaultMsg
+	for _, line := range content {
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush {
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)
@@ -331,20 +307,20 @@ func TestMultilineAfterNegateFlushPatternWhereTheFirstLinesDosentMatchTheStartPa
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush{
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)
@@ -372,20 +348,20 @@ func TestMultilineBeforeNegateOKWithEmptyLine(t *testing.T){
 		maxBytes:	defaultMaxBytes,
 		numLines:	0,
 		debug:		true,
+		startTime: 	time.Now(),
+		timeout:	defaultTimeout,
 	}
 	contentStr := ""
 	for _, str := range content{
 		contentStr += str
 	}
 	var retVal []byte
-	entry := *defaultEntry
+	msg := defaultMsg
 	for _, line := range content{
-		entry.Line = []byte(line)
-		tmpVal := ml.Add(entry)
-		if tmpVal != nil{
-			retVal = append(retVal, tmpVal...)
-		}else if tmpVal != nil{
-			t.Fatalf("Unexpected return value from multiline %s\n", string(tmpVal))
+		msg.Line = []byte(line)
+		tmpVal, flush := ml.Add(msg)
+		if flush{
+			retVal = append(retVal, tmpVal.Line...)
 		}
 	}
 	retVal = append(retVal, ml.Bytes()...)

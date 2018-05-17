@@ -24,7 +24,7 @@ func TestValidateDriverOpt(t *testing.T){//TODO - update cases
 		logzioTag: 			"logzioTag",
 		logzioToken:		"logzioToken",
 		logzioType:			"logzioType",
-		logzioUrl:			"logzioUrl",
+		logzioURL:			"logzioURL",
 		logzioDirPath:		fmt.Sprintf("./%s", t.Name()),
 		envRegex:			"reg",
 		dockerLabels:		"label",
@@ -44,7 +44,7 @@ func TestValidateDriverOpt(t *testing.T){//TODO - update cases
 
 func TestMissingToken(t *testing.T){
 	conf := map[string]string{
-		logzioUrl:		"logzioUrl",
+		logzioURL:		"logzioURL",
 		logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
 	}
 
@@ -53,7 +53,7 @@ func TestMissingToken(t *testing.T){
 		Config: 	 conf,
 	}
 
-	if _, err := validateDriverOpt(info); err.Error() != "logz.io token is required" {
+	if _, err := validateDriverOpt(info); err.Error() != "logz.io token is required\n" {
 		t.Fatalf("Failed TestMissingToken, got wrong error: %s", err)
 	}
 }
@@ -66,7 +66,7 @@ func TestNoSuchLogOpt(t *testing.T){
 		logzioTag: 			"logzioTag",
 		logzioToken:		"logzioToken",
 		logzioType:			"logzioType",
-		logzioUrl:			"logzioUrl",
+		logzioURL:			"logzioURL",
 		logzioDirPath:		fmt.Sprintf("./%s", t.Name()),
 		"logzioDummy":		"logzioDummy",
 	}
@@ -76,7 +76,7 @@ func TestNoSuchLogOpt(t *testing.T){
 		Config: 	 conf,
 	}
 
-	if _, err := validateDriverOpt(info); err.Error() != "wrong log-opt: 'logzioDummy' - 123456789"{
+	if _, err := validateDriverOpt(info); err.Error() != "wrong log-opt: 'logzioDummy' - 123456789\n"{
 		t.Fatalf("Failed TestNoSuchLogOpt got wrong error: %s", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestSendingString(t *testing.T){
 	defer mock.Close()
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	defaultFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -161,7 +161,7 @@ func TestSendingJson(t *testing.T){
 	defer mock.Close()
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -237,7 +237,7 @@ func TestStress(t *testing.T){
 	defer os.Setenv(envLogsDrainTimeout, "5s")
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	defaultFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -313,7 +313,7 @@ func TestSendingNoTag(t *testing.T) {
 	defer mock.Close()
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:     mock.URL(),
+			logzioURL:     mock.URL(),
 			logzioToken:   mock.Token(),
 			logzioFormat:  jsonFormat,
 			logzioDirPath: fmt.Sprintf("./%s", t.Name()),
@@ -373,7 +373,7 @@ func TestTimerSendingNotExpired(t *testing.T){
 
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -451,7 +451,7 @@ func TestTimerSendingExpired(t *testing.T){
 
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -520,171 +520,6 @@ func TestTimerSendingExpired(t *testing.T){
 	}
 }
 
-func TestPartialSendingString(t *testing.T){
-	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
-	go mock.Serve()
-	defer mock.Close()
-
-	info := logger.Info{
-		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
-			logzioToken:	mock.Token(),
-			logzioFormat: 	jsonFormat,
-			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
-		},
-		ContainerID:        "containeriid",
-		ContainerName:      "/container_name",
-		ContainerImageID:   "contaimageid",
-		ContainerImageName: "container_image_name",
-	}
-	logziol, err := newLogzioLogger(info, nil, "0")
-	if err != nil{
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last:	false,
-		ID:		info.ContainerID,
-	}
-	msgTime := time.Now()
-	str := &logger.Message{
-		Line: 			[]byte("str"),
-		Source:  		"stdout",
-		Timestamp: 		msgTime,
-		PLogMetaData:	plmd,
-	}
-
-	if err := logziol.Log(str); err != nil{
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	plmd = &backend.PartialLogMetaData{
-		Last:	true,
-		ID:		info.ContainerID,
-	}
-	msgTime = time.Now()
-	str = &logger.Message{
-		Line: 			[]byte("ing"),
-		Source:  		"stdout",
-		Timestamp: 		msgTime,
-		PLogMetaData:	plmd,
-	}
-
-	if err := logziol.Log(str); err != nil{
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	err = logziol.Close()
-	if err != nil{
-		t.Fatal(err)
-	}
-
-	<- time.After(250 * time.Millisecond)
-
-	batchNumber := mock.Batch()
-	if batchNumber != 1{
-		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
-	}
-	hostname, err := os.Hostname()
-	if err != nil{
-		t.Fatal(err)
-	}
-	// sanity check
-	sMsg := mock.messages[0]
-	if sMsg["message"] != "string" ||
-		sMsg["log_source"] != "stdout" ||
-		sMsg["hostname"] != hostname||
-		sMsg["driver_timestamp"] != time.Unix(0, str.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
-		sMsg["tags"] != info.ContainerID{
-			t.Fatal("Expecting messages to be the same")
-	}
-}
-
-func TestPartialSendingJson(t *testing.T){
-	mock := NewtestHTTPMock(t, []int{http.StatusOK, http.StatusOK})
-	go mock.Serve()
-	defer mock.Close()
-
-	info := logger.Info{
-		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
-			logzioToken:	mock.Token(),
-			logzioFormat: 	jsonFormat,
-			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
-			logzioType:		"type",
-		},
-		ContainerID:        "containeriid",
-		ContainerName:      "/container_name",
-		ContainerImageID:   "contaimageid",
-		ContainerImageName: "container_image_name",
-	}
-	logziol, err := newLogzioLogger(info, nil, "0")
-	if err != nil{
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last:	false,
-		ID:		info.ContainerID,
-	}
-	msgTime := time.Now()
-	jstr := &logger.Message{
-		Line: 			[]byte("{\"key\""),
-		Source:  		"stdout",
-		Timestamp: 		msgTime,
-		PLogMetaData:	plmd,
-	}
-
-	if err := logziol.Log(jstr); err != nil{
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	plmd = &backend.PartialLogMetaData{
-		Last:	true,
-		ID:		info.ContainerID,
-	}
-	msgTime = time.Now()
-	jstr = &logger.Message{
-		Line: 			[]byte(":\"value\"}"),
-		Source:  		"stdout",
-		Timestamp: 		msgTime,
-		PLogMetaData:	plmd,
-	}
-
-	if err := logziol.Log(jstr); err != nil{
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	err = logziol.Close()
-	if err != nil{
-		t.Fatal(err)
-	}
-
-	<- time.After(250 * time.Millisecond)
-
-	batchNumber := mock.Batch()
-	if batchNumber != 1{
-		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
-	}
-	hostname, err := info.Hostname()
-	if err != nil{
-		t.Fatal(err)
-	}
-	// check json message
-	jm := mock.messages[0]
-	if 	jm["log_source"] != "stdout" ||
-		jm["hostname"] != hostname||
-		jm["driver_timestamp"] != time.Unix(0, jstr.Timestamp.UnixNano()).Format(time.RFC3339Nano) ||
-		jm["tags"] != info.ContainerID{
-		t.Fatalf("Failed json message, one of the meata data is missing. %+v\n", jm)
-	}
-
-	// casting message to a map
-	if jm["message"].(map[string]interface{})["key"] != "value"{
-		t.Fatalf("Failed json message, not a json: %v", jm["message"])
-	}
-}
-
 func TestDrainAfterClosed(t *testing.T){
 	resp := []int{http.StatusInternalServerError, http.StatusInternalServerError, http.StatusOK}
 	mock := NewtestHTTPMock(t, resp)
@@ -692,7 +527,7 @@ func TestDrainAfterClosed(t *testing.T){
 	defer mock.Close()
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:   	mock.URL(),
+			logzioURL:   	mock.URL(),
 			logzioToken:	mock.Token(),
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),
@@ -749,7 +584,7 @@ func TestServerIsDown(t *testing.T){
 	defer ts.Close()
 	info := logger.Info{
 		Config: map[string]string{
-			logzioUrl:      "http://localhost:12345",
+			logzioURL:      "http://localhost:12345",
 			logzioToken:    "123456789",
 			logzioFormat: 	jsonFormat,
 			logzioDirPath:	fmt.Sprintf("./%s", t.Name()),

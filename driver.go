@@ -127,6 +127,7 @@ func (d *Driver) flushPartialBuffers() {
 		for containerID, containerLoggerInfo := range d.idx {
 			d.mu.Lock()
 			if _, ok := d.idx[containerID]; !ok {
+				d.mu.Unlock()
 				continue
 			}
 			logzioLogger := containerLoggerInfo.logzioLogger

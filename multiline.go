@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"github.com/moby/moby/api/types/plugins/logdriver"
 )
 
 const (
@@ -29,6 +30,8 @@ type Multiline struct {
 	numLines		int
 	debug			bool
 	last			[]byte
+	source			string
+	timeNano		int64
 }
 
 func NewMultiLine(multilineConfig map[string]string) *Multiline{
@@ -112,11 +115,11 @@ func (ml *Multiline) Reset(){
 	ml.last = nil
 }
 
-func (ml *Multiline) Add(line []byte) []byte{
+func (ml *Multiline) Add(entry logdriver.LogEntry) []byte{
 	if ml.match == "after"{
-		return ml.matchAfter(line)
+		return ml.matchAfter(entry)
 	}else{
-		return ml.matchBefore(line)
+		return ml.matchBefore(entry)
 	}
 }
 
@@ -142,10 +145,13 @@ func (ml *Multiline) finalize() []byte{
 	return nil
 }
 
-func (ml *Multiline) matchAfter(line []byte)[]byte {
+func (ml *Multiline) matchAfter(entry logdriver.LogEntry)[]byte {
+	line := entry.Line
 	// first read
 	if len(ml.buf) == 0 {
 		ml.addLine(line)
+		ml.timeNano = entry.TimeNano
+		ml.source = entry.Source
 		return ml.finalize()
 	}
 	matches := ml.getMatch(line, ml.pattern)
@@ -164,11 +170,14 @@ func (ml *Multiline) matchAfter(line []byte)[]byte {
 	return retLine
 }
 
-func (ml *Multiline) matchBefore(line []byte)[]byte {
+func (ml *Multiline) matchBefore(entry logdriver.LogEntry)[]byte {
+	line := entry.Line
 	matches := ml.getMatch(line, ml.pattern)
 	if matches {
 		if len(ml.buf) == 0{
 			ml.addLine(line)
+			ml.timeNano = entry.TimeNano
+			ml.source = entry.Source
 			return ml.finalize()
 		}else {
 			retLine := ml.buf

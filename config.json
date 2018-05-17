@@ -1,0 +1,44 @@
+{
+  "description": "Logz.io logging plugin",
+  "documentation": "https://github.com/logzio/Docker-Logging-Driver",
+  "entrypoint": ["/bin/logzio-logging-plugin"],
+  "network": {
+    "type": "host"
+  },
+  "interface": {
+    "types": ["docker.logdriver/1.0"],
+    "socket": "logzio.sock"
+  },
+  "env": [
+    {
+      "name": "LOG_LEVEL",
+      "description": "Set log level to output for plugin logs",
+      "value": "info",
+      "settable": ["value"]
+    },
+    {
+      "name": "LOGZIO_DRIVER_LOGS_DRAIN_TIMEOUT",
+      "description": "Set how often we send messages (time.duration value)",
+      "value": "5s",
+      "settable": ["value"]
+    },
+    {
+      "name": "LOGZIO_DRIVER_CHANNEL_SIZE",
+      "description": "Set number of messages waiting in the buffer before pushing to queue and sending them",
+      "value": "10000",
+      "settable": ["value"]
+    },
+    {
+      "name": "LOGZIO_DRIVER_DISK_THRESHOLD",
+      "description": "Set maximum queue disk size ( in %)",
+      "value": "70",
+      "settable": ["value"]
+    },
+    {
+      "name": "LOGZIO_MAX_MSG_BUFFER_SIZE",
+      "description": "Used when logs that are chunked by docker with 16kb limit. Set the biggest message that the system can reassemble.",
+      "value": "1048576",
+      "settable": ["value"]
+    }
+  ]
+}

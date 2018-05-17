@@ -1,0 +1,8 @@
+{
+  "log-driver": "logzio",
+  "log-opts": {
+    "logzio-token": "token",
+    "logzio-url": "url",
+    "logzio-dir-path": "./test_deamon_global_configuration"
+  }
+}

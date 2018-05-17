@@ -47,7 +47,7 @@ const (
 	envChannelSize                = "LOGZIO_DRIVER_CHANNEL_SIZE"
 	envDiskThreshold              = "LOGZIO_DRIVER_DISK_THRESHOLD"
 	envMaxMsgBufferSize           = "LOGZIO_MAX_MSG_BUFFER_SIZE"
-	envPartialBufferTimerDuration = "LOGZIO_MAX_PARTIAL_BUFFER__DURATION"
+	envPartialBufferTimerDuration = "LOGZIO_MAX_PARTIAL_BUFFER_DURATION"
 
 	envRegex     = "env-regex"
 	dockerLabels = "labels"

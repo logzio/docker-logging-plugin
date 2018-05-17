@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"github.com/moby/moby/api/types/plugins/logdriver"
+
+	"github.com/docker/docker/api/types/plugins/logdriver"
 )
 
 const (
-	defaultNegate 	= true
-	defaultMatch  	= "after"
-	defaultMaxLines = 500
-	defaultMaxBytes = 400000
-	defaultTimeout	= 5 * time.Second
+	defaultNegate 	 = true
+	defaultMatch  	 = "after"
+	defaultMaxLines  = 500
+	defaultMaxBytes  = 400000
+	defaultTimeout	 = 5 * time.Second
+	defaultSeparator = ""
+	defaultFlushPrt  = ""
 )
 
 type Multiline struct {
@@ -81,12 +84,25 @@ func NewMultiLine(multilineConfig map[string]string) *Multiline{
 		}
 	}
 
+	separator := defaultSeparator
+	if conSeparator, ok := multilineConfig["separator"]; ok{
+		separator = conSeparator
+	}
+
+	flushPtr := defaultFlushPrt
+	if conMaxBytes, ok := multilineConfig["flushPtr"]; ok{
+		maxBytes, err = strconv.Atoi(conMaxBytes)
+		if err != nil{
+			fmt.Errorf("Error parsing timeout to a time format %s\n", err)
+			return nil
+		}
+	}
 	return &Multiline{
 		match:		match,
-		separator:	multilineConfig["separator"],
+		separator:	separator,
 		pattern: 	multilineConfig["pattern"],
 		negate: 	negate,
-		flushPtr: 	multilineConfig["flushPtr"],
+		flushPtr: 	flushPtr,
 		maxLines:	maxLines,
 		maxBytes:   maxBytes,
 		numLines:	0,
@@ -113,6 +129,7 @@ func (ml *Multiline) Reset(){
 	ml.buf = nil
 	ml.numLines = 0
 	ml.last = nil
+	ml.startTime = time.Now()
 }
 
 func (ml *Multiline) Add(entry logdriver.LogEntry) []byte{
@@ -137,7 +154,7 @@ func (ml *Multiline) getMatch(line []byte, ptr string) bool{
 }
 
 func (ml *Multiline) finalize() []byte{
-	if ml.maxBytes <= len(ml.buf) || ml.maxLines == ml.numLines{
+	if ml.maxBytes <= len(ml.buf) || ml.maxLines == ml.numLines || time.Now().Sub(ml.startTime) > ml.timeout{
 		retLine := ml.buf
 		ml.Reset()
 		return retLine

@@ -1,10 +1,20 @@
 package main
 
 import (
-"testing"
-"strings"
-"bytes"
+	"testing"
+	"strings"
+	"bytes"
+
+	"github.com/docker/docker/api/types/plugins/logdriver"
 )
+
+
+var defaultEntry = &logdriver.LogEntry{
+	Source:   "",
+	TimeNano: 123456,
+	Line:     nil,
+	Partial:  false,
+}
 
 func TestJaveStackTrace(t *testing.T){
 	content := `Exception in thread "main" java.lang.NullPointerException
@@ -24,8 +34,10 @@ func TestJaveStackTrace(t *testing.T){
 		debug:		true,
 	}
 	lines := strings.Split(content, "\n")
+	entry := *defaultEntry
 	for _, line := range lines{
-		retVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		retVal := ml.Add(entry)
 		if retVal != nil{
 			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
 		}
@@ -51,8 +63,10 @@ func TestTimestamp(t *testing.T){
 		numLines:	0,
 		debug:		true,
 	}
+	entry := *defaultEntry
 	for _, line := range content{
-		retVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		retVal := ml.Add(entry)
 		if retVal != nil{
 			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
 		}
@@ -80,8 +94,10 @@ func TestLineContinuations(t *testing.T){
 		numLines:	0,
 		debug:		true,
 	}
+	entry := *defaultEntry
 	for _, line := range content{
-		retVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		retVal := ml.Add(entry)
 		if retVal != nil{
 			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
 		}
@@ -109,8 +125,10 @@ func TestApplicationEvents(t *testing.T){
 		numLines:	0,
 		debug:		true,
 	}
+	entry := *defaultEntry
 	for _, line := range content{
-		retVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		retVal := ml.Add(entry)
 		if retVal != nil{
 			t.Fatalf("Unexpected return value from multiline %s\n", string(retVal))
 		}
@@ -143,8 +161,10 @@ func TestTestMultilineAfter(t *testing.T){
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{
@@ -209,8 +229,10 @@ func TestMultilineAfterNegate(t *testing.T){
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{
@@ -241,8 +263,10 @@ func TestMultilineBeforeNegate(t *testing.T){
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{
@@ -273,8 +297,10 @@ func TestMultilineAfterNegateFlushPattern(t *testing.T){
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{
@@ -311,8 +337,10 @@ func TestMultilineAfterNegateFlushPatternWhereTheFirstLinesDosentMatchTheStartPa
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{
@@ -350,8 +378,10 @@ func TestMultilineBeforeNegateOKWithEmptyLine(t *testing.T){
 		contentStr += str
 	}
 	var retVal []byte
+	entry := *defaultEntry
 	for _, line := range content{
-		tmpVal := ml.Add([]byte(line))
+		entry.Line = []byte(line)
+		tmpVal := ml.Add(entry)
 		if tmpVal != nil{
 			retVal = append(retVal, tmpVal...)
 		}else if tmpVal != nil{

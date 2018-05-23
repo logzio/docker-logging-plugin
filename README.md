@@ -20,7 +20,7 @@ Choose how you want to install the plugin:
 
 1. Pull the plugin from the Docker Store:
   ```
-  $ docker plugin install logzio/Docker-Logging-Plugin:latest --alias logzio/logzio-logging-plugin
+  $ docker plugin install store/logzio/logzio-logging-plugin:<version> --alias logzio/logzio-logging-plugin
   ```
 
 2. Enable the plugin, if needed:
@@ -128,9 +128,10 @@ Continue to [Step 3: Run containers](#step-3-run-containers)
 ### Usage example
 
 ```
-$ docker run --log-driver=logzio/logzio-docker-logging-plugin \
+$ docker run --log-driver=logzio/logzio-logging-plugin \
              --log-opt logzio-token=123456789 \
              --log-opt logzio-url=https://listener.logz.io:8071 \
+             --log-opt logzio-dir-path=./docker_logs \
              --log-opt logzio-tag="{{.Name}}/{{.FullID}}" \
              --log-opt labels=region \
              --log-opt env=DEV \

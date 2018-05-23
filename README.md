@@ -148,3 +148,6 @@ To run your containers, see [Docker Documentation](https://docs.docker.com/confi
 
 ## Credits
 This plugin relies on the open source [Logz.io go https shipper](https://github.com/dougEfresh/logzio-go) by [Douglas Chimento](https://github.com/dougEfresh)
+
+## Release Notes
+- 1.0.0 - First version

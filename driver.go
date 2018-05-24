@@ -277,6 +277,7 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
 	lsender, err := logzio.New(token,
+		logzio.SetDebug(os.Stderr),
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
 		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir, string(os.PathSeparator), hashCode)),

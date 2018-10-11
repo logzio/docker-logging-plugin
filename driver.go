@@ -393,6 +393,10 @@ func (logzioLogger *LogzioLogger) sendMessageToChannel(msg map[string]interface{
 }
 
 func (logzioLogger *LogzioLogger) Log(msg *logger.Message) error {
+	if len(bytes.Fields(msg.Line)) == 0 {
+		logrus.Info("Discard empty string")
+		return nil
+	}
 	logMessage := make(map[string]interface{})
 	for index, element := range logzioLogger.msg {
 		logMessage[index] = element
@@ -587,7 +591,7 @@ func (d *Driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()
-		defer watcher.Close()
+		defer watcher.ConsumerGone()
 
 		var buf logdriver.LogEntry
 		for {

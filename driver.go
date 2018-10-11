@@ -393,6 +393,10 @@ func (logzioLogger *LogzioLogger) sendMessageToChannel(msg map[string]interface{
 }
 
 func (logzioLogger *LogzioLogger) Log(msg *logger.Message) error {
+	if len(bytes.Fields(msg.Line)) == 0 {
+		logrus.Warn("Discard empty string")
+		return nil
+	}
 	logMessage := make(map[string]interface{})
 	for index, element := range logzioLogger.msg {
 		logMessage[index] = element

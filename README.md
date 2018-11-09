@@ -34,8 +34,7 @@ Continue to [Step 2: Set configuration variables](#step-2-set-configuration-vari
 
 1. Clone the repository and check out release branch:
   ```
-  $ git clone https://github.com/logzio/Docker-Logging-Driver.git
-  $ cd Docker-Logging-Driver
+  $ cd docker-logging-plugin
   $ git checkout release
   ```
 

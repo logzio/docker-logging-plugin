@@ -251,7 +251,6 @@
   input-imports = [
     "github.com/Sirupsen/logrus",
     "github.com/beeker1121/goque",
-    "github.com/docker/docker/api/types/backend",
     "github.com/docker/docker/api/types/plugins/logdriver",
     "github.com/docker/docker/daemon/logger",
     "github.com/docker/docker/daemon/logger/jsonfilelog",

@@ -110,10 +110,10 @@ func TestSendingString(t *testing.T) {
 	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	str := &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    time.Now(),
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: time.Now(),
+		Partial:   false,
 	}
 	if err := logziol.Log(str); err != nil {
 		t.Fatalf("Failed Log string: %s", err)
@@ -180,10 +180,10 @@ func TestSendingJson(t *testing.T) {
 	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	jstr := &logger.Message{
-		Line:         []byte("{\"key\":\"value\"}"),
-		Source:       "stdout",
-		Timestamp:    time.Now(),
-		Partial: 	  false,
+		Line:      []byte("{\"key\":\"value\"}"),
+		Source:    "stdout",
+		Timestamp: time.Now(),
+		Partial:   false,
 	}
 
 	if err := logziol.Log(jstr); err != nil {
@@ -330,10 +330,10 @@ func TestSendingEmptyString(t *testing.T) {
 	stringThree := ""
 
 	str := &logger.Message{
-		Line:         []byte(stringOne),
-		Source:       "stdout",
-		Timestamp:    time.Now(),
-		Partial: 	  false,
+		Line:      []byte(stringOne),
+		Source:    "stdout",
+		Timestamp: time.Now(),
+		Partial:   false,
 	}
 	if err := logziol.Log(str); err != nil {
 		t.Fatalf("Failed Log string: %s", err)
@@ -408,10 +408,10 @@ func TestSendingNoTag(t *testing.T) {
 	defer os.RemoveAll(info.Config[logzioDirPath])
 
 	str := &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    time.Now(),
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: time.Now(),
+		Partial:   false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -465,10 +465,10 @@ func TestTimerSendingNotExpired(t *testing.T) {
 
 	msgTime := time.Now()
 	str := &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    msgTime,
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: msgTime,
+		Partial:   false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -478,10 +478,10 @@ func TestTimerSendingNotExpired(t *testing.T) {
 	<-time.After(defaultLogsDrainTimeout - (time.Second * 1))
 
 	str = &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    msgTime,
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: msgTime,
+		Partial:   false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -535,10 +535,10 @@ func TestTimerSendingExpired(t *testing.T) {
 
 	msgTime := time.Now()
 	str := &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    msgTime,
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: msgTime,
+		Partial:   false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -548,10 +548,10 @@ func TestTimerSendingExpired(t *testing.T) {
 	<-time.After(defaultLogsDrainTimeout + (time.Second * 1))
 
 	str = &logger.Message{
-		Line:         []byte("string"),
-		Source:       "stdout",
-		Timestamp:    msgTime,
-		Partial: 	  false,
+		Line:      []byte("string"),
+		Source:    "stdout",
+		Timestamp: msgTime,
+		Partial:   false,
 	}
 
 	if err := logziol.Log(str); err != nil {

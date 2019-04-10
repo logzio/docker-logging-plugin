@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
@@ -137,10 +136,6 @@ func (d *Driver) flushPartialBuffers() {
 				msg.Line = logzioLogger.pBuf.buf
 				msg.Source = logzioLogger.pBuf.source
 				msg.Timestamp = time.Unix(0, logzioLogger.pBuf.timeNano)
-				msg.PLogMetaData = &backend.PartialLogMetaData{
-					Last: true,
-					ID:   containerID,
-				}
 
 				if err := logzioLogger.Log(&msg); err != nil {
 					logrus.WithField("id", containerID).WithError(err).WithField("message", msg).
@@ -552,10 +547,7 @@ func consumeLog(lf *ContainerLoggersCtx) {
 				msg.Line = pBuf.buf
 				msg.Source = buf.Source
 				msg.Timestamp = time.Unix(0, buf.TimeNano)
-				msg.PLogMetaData = &backend.PartialLogMetaData{
-					Last: !buf.Partial,
-					ID:   lf.info.ContainerID,
-				}
+				msg.Partial = buf.Partial
 
 				if err := lf.logzioLogger.Log(&msg); err != nil {
 					logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).
@@ -591,7 +583,7 @@ func (d *Driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()
-		defer watcher.ConsumerGone()
+		defer watcher.Close()
 
 		var buf logdriver.LogEntry
 		for {
@@ -604,9 +596,7 @@ func (d *Driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 
 				buf.Line = msg.Line
 				buf.Partial = false
-				if msg.PLogMetaData != nil {
-					buf.Partial = !msg.PLogMetaData.Last
-				}
+
 				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 

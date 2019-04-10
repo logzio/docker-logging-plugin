@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/beeker1121/goque"
-	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/daemon/logger"
 
 	"net/http"
@@ -109,15 +108,12 @@ func TestSendingString(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	str := &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    time.Now(),
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 	if err := logziol.Log(str); err != nil {
 		t.Fatalf("Failed Log string: %s", err)
@@ -182,16 +178,12 @@ func TestSendingJson(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
 
 	jstr := &logger.Message{
 		Line:         []byte("{\"key\":\"value\"}"),
 		Source:       "stdout",
 		Timestamp:    time.Now(),
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(jstr); err != nil {
@@ -259,13 +251,10 @@ func TestStress(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	for i := 0; i < totalLogs; i++ {
 		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout",
-			Timestamp: time.Now(), PLogMetaData: plmd}); err != nil {
+			Timestamp: time.Now(), Partial: false}); err != nil {
 			t.Fatalf("Failed Log string: %s", err)
 		}
 	}
@@ -335,10 +324,6 @@ func TestSendingEmptyString(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
 
 	stringOne := "Logz.io !"
 	stringTwo := "   "
@@ -348,7 +333,7 @@ func TestSendingEmptyString(t *testing.T) {
 		Line:         []byte(stringOne),
 		Source:       "stdout",
 		Timestamp:    time.Now(),
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 	if err := logziol.Log(str); err != nil {
 		t.Fatalf("Failed Log string: %s", err)
@@ -421,15 +406,12 @@ func TestSendingNoTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	str := &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    time.Now(),
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -480,16 +462,13 @@ func TestTimerSendingNotExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	msgTime := time.Now()
 	str := &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    msgTime,
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -498,16 +477,11 @@ func TestTimerSendingNotExpired(t *testing.T) {
 
 	<-time.After(defaultLogsDrainTimeout - (time.Second * 1))
 
-	plmd = &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
-
 	str = &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    msgTime,
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -558,16 +532,13 @@ func TestTimerSendingExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	msgTime := time.Now()
 	str := &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    msgTime,
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -575,15 +546,12 @@ func TestTimerSendingExpired(t *testing.T) {
 	}
 
 	<-time.After(defaultLogsDrainTimeout + (time.Second * 1))
-	plmd = &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	str = &logger.Message{
 		Line:         []byte("string"),
 		Source:       "stdout",
 		Timestamp:    msgTime,
-		PLogMetaData: plmd,
+		Partial: 	  false,
 	}
 
 	if err := logziol.Log(str); err != nil {
@@ -638,13 +606,10 @@ func TestDrainAfterClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	for i := 0; i < 5; i++ {
 		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", "str", i)), Source: "stdout",
-			Timestamp: time.Now(), PLogMetaData: plmd}); err != nil {
+			Timestamp: time.Now(), Partial: false}); err != nil {
 			t.Fatalf("Failed Log string: %s", err)
 		}
 	}
@@ -692,13 +657,10 @@ func TestServerIsDown(t *testing.T) {
 	}
 
 	defer os.RemoveAll(info.Config[logzioDirPath])
-	plmd := &backend.PartialLogMetaData{
-		Last: true,
-		ID:   info.ContainerID,
-	}
+
 	for i := 0; i < 5; i++ {
 		if err := logziol.Log(&logger.Message{Line: []byte(fmt.Sprintf("%s%d", t.Name(), i)),
-			Source: "stdout", Timestamp: time.Now(), PLogMetaData: plmd}); err != nil {
+			Source: "stdout", Timestamp: time.Now(), Partial: false}); err != nil {
 			t.Fatalf("Failed Log string: %s", err)
 		}
 	}

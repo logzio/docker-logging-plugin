@@ -595,8 +595,7 @@ func (d *Driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				}
 
 				buf.Line = msg.Line
-				buf.Partial = false
-
+				buf.Partial = msg.Partial
 				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 

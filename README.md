@@ -149,4 +149,5 @@ To run your containers, see [Docker Documentation](https://docs.docker.com/confi
 This plugin relies on the open source [Logz.io go https shipper](https://github.com/dougEfresh/logzio-go) by [Douglas Chimento](https://github.com/dougEfresh)
 
 ## Release Notes
-- 1.0.0 - First version
+- 1.0.1 - ignore emtpy log lines.
+- 1.0.0 - First version.

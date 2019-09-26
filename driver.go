@@ -55,7 +55,7 @@ const (
 
 	defaultMaxMsgBufferSize           = 1024 * 1024
 	defaultLogsDrainTimeout           = time.Second * 5
-	defaultDiskThreshould             = 70
+	defaultDiskThreshould             = 98
 	defaultStreamChannelSize          = 10 * 1000
 	defaultPartialBufferTimerDuration = time.Millisecond * 500
 	defaultFlushPartialBuffer         = time.Second * 5
@@ -258,8 +258,8 @@ func getEnvDuration(env string, dValue time.Duration) time.Duration {
 		retDuration, err = time.ParseDuration(eDuration)
 		if err != nil {
 			logrus.Error(fmt.Sprintf("Error parsing drain timeout %s\n", err))
-			logrus.Info(fmt.Sprintf("Using default drain timeout %v\n", dValue))
-			retDuration = defaultLogsDrainTimeout
+			logrus.Info(fmt.Sprintf("Using default drain timeout %+v\n", dValue))
+			return defaultLogsDrainTimeout
 		}
 	}
 	return retDuration
@@ -275,8 +275,8 @@ func getEnvBool(env string, dValue bool) bool {
 
 	retVal, err := strconv.ParseBool(eVal)
 	if err != nil {
-		logrus.Error(fmt.Sprintf("Error parsing drain timeout %s\n", err))
-		logrus.Info(fmt.Sprintf("Using default drain timeout %v\n", dValue))
+		logrus.Error(fmt.Sprintf("Error parsing debug timeout %s\n", err))
+		logrus.Info(fmt.Sprintf("Using default debug timeout %v\n", dValue))
 	}
 	return retVal
 }
@@ -386,7 +386,6 @@ func (logzioLogger *LogzioLogger) sendToLogzio() {
 			} else if err := logzioLogger.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
 			}
-
 		} else {
 			logzioLogger.logzioSender.Stop()
 			logzioLogger.lock.Lock()

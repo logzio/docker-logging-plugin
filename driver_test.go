@@ -477,36 +477,9 @@ func TestTimerSendingNotExpired(t *testing.T) {
 
 	<-time.After(defaultLogsDrainTimeout - (time.Second * 1))
 
-	str = &logger.Message{
-		Line:      []byte("string"),
-		Source:    "stdout",
-		Timestamp: msgTime,
-		Partial:   false,
-	}
-
-	if err := logziol.Log(str); err != nil {
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	err = logziol.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	<-time.After(250 * time.Millisecond)
-
 	batchNumber := mock.Batch()
-	if batchNumber != 1 {
+	if batchNumber != 0 {
 		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
-	}
-	// sanity check
-	firstMsg, secondMsg := mock.messages[0], mock.messages[1]
-	if firstMsg["message"] != secondMsg["message"] ||
-		firstMsg["log_source"] != secondMsg["log_source"] ||
-		firstMsg["hostname"] != secondMsg["hostname"] ||
-		firstMsg["driver_timestamp"] != secondMsg["driver_timestamp"] ||
-		firstMsg["tags"] != secondMsg["tags"] {
-		t.Fatal("Expecting messages to be the same")
 	}
 }
 
@@ -547,36 +520,9 @@ func TestTimerSendingExpired(t *testing.T) {
 
 	<-time.After(defaultLogsDrainTimeout + (time.Second * 1))
 
-	str = &logger.Message{
-		Line:      []byte("string"),
-		Source:    "stdout",
-		Timestamp: msgTime,
-		Partial:   false,
-	}
-
-	if err := logziol.Log(str); err != nil {
-		t.Fatalf("Failed Log string: %s", err)
-	}
-
-	err = logziol.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	<-time.After(250 * time.Millisecond)
-
 	batchNumber := mock.Batch()
-	if batchNumber != 2 {
+	if batchNumber != 1 {
 		t.Fatalf("Unexpected batch number %d. Expected 1", batchNumber)
-	}
-	// sanity check
-	sMsg, jMsg := mock.messages[0], mock.messages[1]
-	if sMsg["message"] != jMsg["message"] ||
-		sMsg["log_source"] != jMsg["log_source"] ||
-		sMsg["hostname"] != jMsg["hostname"] ||
-		sMsg["driver_timestamp"] != jMsg["driver_timestamp"] ||
-		sMsg["tags"] != jMsg["tags"] {
-		t.Fatal("Expecting messages to be the same")
 	}
 }
 
@@ -651,6 +597,11 @@ func TestServerIsDown(t *testing.T) {
 		ContainerImageID:   "contaimageid",
 		ContainerImageName: "container_image_name",
 	}
+
+	if err := os.Setenv(envLogsDrainTimeout, "1s"); err != nil {
+		t.Fatal(err)
+	}
+
 	logziol, err := newLogzioLogger(info, nil, "0")
 	if err != nil {
 		t.Fatal(err)

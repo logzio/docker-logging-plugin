@@ -123,6 +123,7 @@ Continue to [Step 3: Run containers](#step-3-run-containers)
 | `LOGZIO_DRIVER_CHANNEL_SIZE` | How many pending messages can be in the channel before adding them to the disk queue. | `10000` |
 | `LOGZIO_MAX_MSG_BUFFER_SIZE`	| Appends logs that are segmented by docker with 16kb limit. It specifies the biggest message, in bytes, that the system can reassemble. 1 MB is the default and the maximum allowed. | `1048576` (1 MB) |
 | `LOGZIO_MAX_PARTIAL_BUFFER__DURATION` | How long the buffer keeps the partial logs before flushing them | `500ms`
+| `LOGZIO_DEBUG` | Enable/disable debug mode | `false`
 
 ### Usage example
 

@@ -23,7 +23,7 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/logger/loggerutils"
-	"github.com/dougEfresh/logzio-go"
+	"github.com/logzio/logzio-go"
 	"github.com/fatih/structs"
 	"github.com/pkg/errors"
 	"github.com/tonistiigi/fifo"
@@ -47,6 +47,7 @@ const (
 	envDiskThreshold              = "LOGZIO_DRIVER_DISK_THRESHOLD"
 	envMaxMsgBufferSize           = "LOGZIO_MAX_MSG_BUFFER_SIZE"
 	envPartialBufferTimerDuration = "LOGZIO_MAX_PARTIAL_BUFFER_DURATION"
+	envDebug					  = "LOGZIO_DEBUG"
 
 	envRegex     = "env-regex"
 	dockerLabels = "labels"
@@ -58,6 +59,7 @@ const (
 	defaultStreamChannelSize          = 10 * 1000
 	defaultPartialBufferTimerDuration = time.Millisecond * 500
 	defaultFlushPartialBuffer         = time.Second * 5
+	defaultDebug					  = false
 
 	defaultFormat     = "text"
 	driverName        = "logzio"
@@ -263,6 +265,22 @@ func getEnvDuration(env string, dValue time.Duration) time.Duration {
 	return retDuration
 }
 
+func getEnvBool(env string, dValue bool) bool {
+	// Getenv retrieves the value of the environment variable named by the key.
+	// It returns the value, which will be empty if the variable is not present.
+	eVal := os.Getenv(env)
+	if eVal != "" {
+		return dValue
+	}
+
+	retVal, err := strconv.ParseBool(eVal)
+	if err != nil {
+		logrus.Error(fmt.Sprintf("Error parsing drain timeout %s\n", err))
+		logrus.Info(fmt.Sprintf("Using default drain timeout %v\n", dValue))
+	}
+	return retVal
+}
+
 func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.LogzioSender, hashCode string) (*logzio.LogzioSender, error) {
 	if sender != nil {
 		return sender, nil
@@ -271,8 +289,14 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	urlStr, _ := loggerInfo.Config[logzioURL]
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
+
+	debugWriter := os.Stderr
+	if debug := getEnvBool(envDebug, defaultDebug); !debug {
+		debugWriter = nil
+	}
+
 	lsender, err := logzio.New(token,
-		logzio.SetDebug(os.Stderr),
+		logzio.SetDebug(debugWriter),
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
 		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir, string(os.PathSeparator), hashCode)),

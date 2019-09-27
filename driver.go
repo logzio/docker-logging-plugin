@@ -269,7 +269,7 @@ func getEnvBool(env string, dValue bool) bool {
 	// Getenv retrieves the value of the environment variable named by the key.
 	// It returns the value, which will be empty if the variable is not present.
 	eVal := os.Getenv(env)
-	if eVal != "" {
+	if eVal == "" {
 		return dValue
 	}
 

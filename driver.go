@@ -23,7 +23,7 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/logger/loggerutils"
-	"github.com/dougEfresh/logzio-go"
+	"github.com/logzio/logzio-go"
 	"github.com/fatih/structs"
 	"github.com/pkg/errors"
 	"github.com/tonistiigi/fifo"
@@ -47,6 +47,7 @@ const (
 	envDiskThreshold              = "LOGZIO_DRIVER_DISK_THRESHOLD"
 	envMaxMsgBufferSize           = "LOGZIO_MAX_MSG_BUFFER_SIZE"
 	envPartialBufferTimerDuration = "LOGZIO_MAX_PARTIAL_BUFFER_DURATION"
+	envDebug					  = "LOGZIO_DEBUG"
 
 	envRegex     = "env-regex"
 	dockerLabels = "labels"
@@ -54,10 +55,11 @@ const (
 
 	defaultMaxMsgBufferSize           = 1024 * 1024
 	defaultLogsDrainTimeout           = time.Second * 5
-	defaultDiskThreshould             = 70
+	defaultDiskThreshould             = 98
 	defaultStreamChannelSize          = 10 * 1000
 	defaultPartialBufferTimerDuration = time.Millisecond * 500
 	defaultFlushPartialBuffer         = time.Second * 5
+	defaultDebug					  = false
 
 	defaultFormat     = "text"
 	driverName        = "logzio"
@@ -212,7 +214,7 @@ func getAttributes(loggerInfo logger.Info) map[string]interface{} {
 	}
 	err := json.Unmarshal([]byte(attrStr), &attrMap)
 	if err != nil {
-		logrus.Info("Failed to extract log attributes, please verify the format is correct\n")
+		logrus.Errorf("Failed to extract log attributes, please verify the format is correct\n")
 		return nil
 	}
 	return attrMap
@@ -256,11 +258,27 @@ func getEnvDuration(env string, dValue time.Duration) time.Duration {
 		retDuration, err = time.ParseDuration(eDuration)
 		if err != nil {
 			logrus.Error(fmt.Sprintf("Error parsing drain timeout %s\n", err))
-			logrus.Info(fmt.Sprintf("Using default drain timeout %v\n", dValue))
-			retDuration = defaultLogsDrainTimeout
+			logrus.Info(fmt.Sprintf("Using default drain timeout %+v\n", dValue))
+			return defaultLogsDrainTimeout
 		}
 	}
 	return retDuration
+}
+
+func getEnvBool(env string, dValue bool) bool {
+	// Getenv retrieves the value of the environment variable named by the key.
+	// It returns the value, which will be empty if the variable is not present.
+	eVal := os.Getenv(env)
+	if eVal == "" {
+		return dValue
+	}
+
+	retVal, err := strconv.ParseBool(eVal)
+	if err != nil {
+		logrus.Error(fmt.Sprintf("Error parsing debug timeout %s\n", err))
+		logrus.Info(fmt.Sprintf("Using default debug timeout %v\n", dValue))
+	}
+	return retVal
 }
 
 func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.LogzioSender, hashCode string) (*logzio.LogzioSender, error) {
@@ -271,8 +289,14 @@ func newLogzioSender(loggerInfo logger.Info, token string, sender *logzio.Logzio
 	urlStr, _ := loggerInfo.Config[logzioURL]
 	dir, _ := loggerInfo.Config[logzioDirPath]
 	eDiskThreshold := getEnvInt(envDiskThreshold, defaultDiskThreshould)
+
+	debugWriter := os.Stderr
+	if debug := getEnvBool(envDebug, defaultDebug); !debug {
+		debugWriter = nil
+	}
+
 	lsender, err := logzio.New(token,
-		logzio.SetDebug(os.Stderr),
+		logzio.SetDebug(debugWriter),
 		logzio.SetUrl(urlStr),
 		logzio.SetDrainDiskThreshold(eDiskThreshold),
 		logzio.SetTempDirectory(fmt.Sprintf("%s%s%s", dir, string(os.PathSeparator), hashCode)),
@@ -362,7 +386,6 @@ func (logzioLogger *LogzioLogger) sendToLogzio() {
 			} else if err := logzioLogger.logzioSender.Send(data); err != nil {
 				logrus.Error(fmt.Sprintf("Error enqueue object: %s\n", err))
 			}
-
 		} else {
 			logzioLogger.logzioSender.Stop()
 			logzioLogger.lock.Lock()
@@ -389,7 +412,7 @@ func (logzioLogger *LogzioLogger) sendMessageToChannel(msg map[string]interface{
 
 func (logzioLogger *LogzioLogger) Log(msg *logger.Message) error {
 	if len(bytes.Fields(msg.Line)) == 0 {
-		logrus.Info("Discard empty string")
+		logrus.Debug("Discard empty string")
 		return nil
 	}
 	logMessage := make(map[string]interface{})

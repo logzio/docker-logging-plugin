@@ -12,12 +12,15 @@
   revision = "388960b655244e76e24c75f48631564eaefade62"
 
 [[projects]]
-  digest = "1:f9ae348e1f793dcf9ed930ed47136a67343dbd6809c5c91391322267f4476892"
+  digest = "1:d5e752c67b445baa5b6cb6f8aa706775c2aa8e41aca95a0c651520ff2c80361a"
   name = "github.com/Microsoft/go-winio"
-  packages = ["."]
+  packages = [
+    ".",
+    "pkg/guid",
+  ]
   pruneopts = "UT"
-  revision = "1a8911d1ed007260465c3bfbbc785ac6915a0bb8"
-  version = "v0.4.12"
+  revision = "6c72808b55902eae4c5943626030429ff20f3b63"
+  version = "v0.4.14"
 
 [[projects]]
   branch = "master"
@@ -36,6 +39,14 @@
   version = "v0.11.5"
 
 [[projects]]
+  digest = "1:e92f5581902c345eb4ceffdcd4a854fb8f73cf436d47d837d1ec98ef1fe0a214"
+  name = "github.com/StackExchange/wmi"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "5d049714c4a64225c3c79a7cf7d02f7fb5b96338"
+  version = "1.0.0"
+
+[[projects]]
   digest = "1:2734f64badcd6ff46a23ef1864621a0c42b694c91383dc18c6b375bfe1fe9984"
   name = "github.com/beeker1121/goque"
   packages = ["."]
@@ -48,8 +59,8 @@
   name = "github.com/coreos/go-systemd"
   packages = ["activation"]
   pruneopts = "UT"
-  revision = "95778dfbb74eb7e4dbaf43bf7d71809650ef8076"
-  version = "v19"
+  revision = "e64a0ec8b42a61e2a9801dc1d0abe539dea79197"
+  version = "v20"
 
 [[projects]]
   digest = "1:58167c06a7ab4813a10bd502256177bfa810297af4faf69ffa59a8d386288574"
@@ -120,14 +131,6 @@
   revision = "9e638d38cf6977a37a8ea0078f3ee75a7cdb2dd1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:294d1f2fd98cc5d9a2036503359ebab91c8e3755b3dc44c95946fce36603fe0f"
-  name = "github.com/dougEfresh/logzio-go"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "37b24151b96353781053493f296835dcf8de7057"
-
-[[projects]]
   digest = "1:af43bdaaf86655a2343f113e9b293bbc16b12099eaeb223982bbe4d4c22ba14d"
   name = "github.com/fatih/structs"
   packages = ["."]
@@ -144,15 +147,26 @@
   version = "v1.2.11"
 
 [[projects]]
-  digest = "1:760b2447d30444b6c2da7f77b677921f095fe19e6ed423b2edc1cd47a8507789"
+  digest = "1:440028f55cb322d8cb5b9d5ebec298a00b7d74690a658fe6b1c0c0b44341bfae"
+  name = "github.com/go-ole/go-ole"
+  packages = [
+    ".",
+    "oleutil",
+  ]
+  pruneopts = "UT"
+  revision = "97b6244175ae18ea6eef668034fd6565847501c9"
+  version = "v1.2.4"
+
+[[projects]]
+  digest = "1:e5e844c8e33291744760181d0041a5fd312bbebf66a8060c410d5befdf54fc14"
   name = "github.com/gogo/protobuf"
   packages = [
     "io",
     "proto",
   ]
   pruneopts = "UT"
-  revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
-  version = "v1.2.1"
+  revision = "0ca988a254f991240804bf9821f3450d87ccbb1b"
+  version = "v1.3.0"
 
 [[projects]]
   digest = "1:e4f5819333ac698d294fe04dbf640f84719658d5c7ce195b10060cc37292ce79"
@@ -163,6 +177,14 @@
   version = "v0.0.1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:9881d2f5be064682e6ab90b9f4e66f875d6cf22d4a099c0665f8cac4f21a9921"
+  name = "github.com/logzio/logzio-go"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4cd568a9b6d6fcfe3cf9da2d84b684dac6f325cd"
+
+[[projects]]
   digest = "1:cf31692c14422fa27c83a05292eb5cbe0fb2775972e8f1f8446a71549bd8980b"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -171,12 +193,15 @@
   version = "v0.8.1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:0a7bff3079a5232e66bd5396b1ff615475de1f92574dbcb76d4ee30b4ebabd76"
-  name = "github.com/ricochet2200/go-disk-usage"
-  packages = ["du"]
+  digest = "1:b95189af9471960833fccd39aca2fe1c444b50cfb8c728b985f40fa594d0b36a"
+  name = "github.com/shirou/gopsutil"
+  packages = [
+    "disk",
+    "internal/common",
+  ]
   pruneopts = "UT"
-  revision = "f0d1b743428fc09792f93233d9412f89f88fa2ab"
+  revision = "e4ec7b275ada47ca32799106c2dba142d96aaf93"
+  version = "v2.19.8"
 
 [[projects]]
   digest = "1:5b180f17d5bc50b765f4dcf0d126c72979531cbbd7f7929bf3edd87fb801ea2d"
@@ -201,23 +226,23 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:9ab2182297ebe5a1433c9804ba65a382e4f41e3084485d1b4d31996e4c992e38"
+  digest = "1:1b9a7426259b5333d575785e21e1bd0decf18208f5bfb6424d24a50d5ddf83d0"
   name = "github.com/tonistiigi/fifo"
   packages = ["."]
   pruneopts = "UT"
-  revision = "a9fb20d87448d386e6d50b1f2e1fa70dcf0de43c"
+  revision = "bda0ff6ed73c67bfb5e62bc9c697f146b7fd7f13"
 
 [[projects]]
-  digest = "1:3c1a69cdae3501bf75e76d0d86dc6f2b0a7421bc205c0cb7b96b19eed464a34d"
+  digest = "1:a5158647b553c61877aa9ae74f4015000294e47981e6b8b07525edcbb0747c81"
   name = "go.uber.org/atomic"
   packages = ["."]
   pruneopts = "UT"
-  revision = "1ea20fb1cbb1cc08cbd0d913a96dead89aa18289"
-  version = "v1.3.2"
+  revision = "df976f2515e274675050de7b3f42545de80594fd"
+  version = "v1.4.0"
 
 [[projects]]
   branch = "master"
-  digest = "1:0b851485460e2bf7e8a5eeb9d115e8f89f3a82b6ccd4388892be08bb5f216d44"
+  digest = "1:0304634fa2603fdbcdd163bf349d056b979adc412c7fc46578c7983c8bf74219"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -225,18 +250,18 @@
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "eb5bcb51f2a31c7d5141d810b70815c05d9c9146"
+  revision = "c00fd9afed17cfdca9b3e1e3b8de7ef2b3f0347b"
 
 [[projects]]
   branch = "master"
-  digest = "1:503f66aac79cb9135d73679c7fa3e95a6fad82a3da399c505ea282b50ff03723"
+  digest = "1:84aa29f57ad15b7344340348606996a4251bca7b1f8c5fa5370eea3a44e8ed07"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "UT"
-  revision = "4b34438f7a67ee5f45cc6132e2bad873a20324e9"
+  revision = "2837fb4f24fee082b8c39b1a6dc9e0ed9f3fbd4f"
 
 [[projects]]
   digest = "1:600b0e53535b033363a3c22bbb712e635799a2a4d516bdd8c8435d12901dfdd3"
@@ -257,9 +282,9 @@
     "github.com/docker/docker/daemon/logger/loggerutils",
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
-    "github.com/dougEfresh/logzio-go",
     "github.com/fatih/structs",
     "github.com/gogo/protobuf/io",
+    "github.com/logzio/logzio-go",
     "github.com/pkg/errors",
     "github.com/tonistiigi/fifo",
   ]

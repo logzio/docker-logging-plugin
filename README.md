@@ -150,4 +150,6 @@ To run your containers, see [Docker Documentation](https://docs.docker.com/confi
 This plugin relies on the open source [Logz.io go https shipper](https://github.com/dougEfresh/logzio-go) by [Douglas Chimento](https://github.com/dougEfresh)
 
 ## Release Notes
+- 1.0.1 - Added a debug option for Logz.io sender logs, helping to reduce the number of logs produced by the driver.
+- 1.0.1 - Ignore empty lines
 - 1.0.0 - First version

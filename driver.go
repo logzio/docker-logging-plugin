@@ -214,7 +214,7 @@ func getAttributes(loggerInfo logger.Info) map[string]interface{} {
 	}
 	err := json.Unmarshal([]byte(attrStr), &attrMap)
 	if err != nil {
-		logrus.Info("Failed to extract log attributes, please verify the format is correct\n")
+		logrus.Errorf("Failed to extract log attributes, please verify the format is correct\n")
 		return nil
 	}
 	return attrMap
@@ -412,7 +412,7 @@ func (logzioLogger *LogzioLogger) sendMessageToChannel(msg map[string]interface{
 
 func (logzioLogger *LogzioLogger) Log(msg *logger.Message) error {
 	if len(bytes.Fields(msg.Line)) == 0 {
-		logrus.Info("Discard empty string")
+		logrus.Debug("Discard empty string")
 		return nil
 	}
 	logMessage := make(map[string]interface{})

@@ -10,7 +10,7 @@ RUN cd /go/src/github.com/logzio/logzio-logging-plugin && go get -v
 
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /bin/logzio-logging-plugin .
 
-FROM alpine:3.7
+FROM alpine:3.13.8
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /bin/logzio-logging-plugin /bin/
 WORKDIR /bin/

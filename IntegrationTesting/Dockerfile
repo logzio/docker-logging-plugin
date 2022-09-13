@@ -1,12 +1,5 @@
-FROM python:2
+FROM python:3.9.14-slim
 WORKDIR /usr/local/bin
-COPY my_script.py .
-ARG iterations
-ENV ITERATIONS=$iterations
-ARG prefix
-ENV PREFIX=$prefix
-ARG time
-ENV TIME=$time
+COPY log_generator.py .
 
-
-CMD python ./my_script.py -i $ITERATIONS -t $TIME -p $PREFIX
+CMD python3 -u ./log_generator.py -i 1000 -t 1 -p pre

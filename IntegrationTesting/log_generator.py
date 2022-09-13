@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import argparse
 import sys
 import time
@@ -14,7 +14,7 @@ def main(argv):
     parser.add_argument("-t", "--time", dest="time", type=str, default="0",
                         help="Sleeping time (sec) between prints")
     args = parser.parse_args(argv)
-    for i in xrange(int(args.iterations)):
+    for i in range(int(args.iterations)):
         print("{0}_{1}".format(args.prefix, i))
         time.sleep(int(args.time))
 

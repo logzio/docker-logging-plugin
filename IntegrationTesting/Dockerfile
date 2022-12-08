@@ -1,4 +1,4 @@
-FROM python:3.9.14-slim
+FROM python:3.11.0-slim
 WORKDIR /usr/local/bin
 COPY log_generator.py .
 

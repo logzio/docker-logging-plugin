@@ -150,6 +150,10 @@ To run your containers, see [Docker Documentation](https://docs.docker.com/confi
 This plugin relies on the open source [Logz.io go https shipper](https://github.com/dougEfresh/logzio-go) by [Douglas Chimento](https://github.com/dougEfresh)
 
 ## Release Notes
-- 1.0.2 - Added a debug option for Logz.io sender logs, helping to reduce the number of logs produced by the driver.
-- 1.0.1 - Ignore empty lines
-- 1.0.0 - First version
+
+- 1.0.3:
+  - Update python version for test log generator `3.9.14-slim` -> `3.12.2-slim`
+  - Update alpine base image `3.7` -> `3.15`
+- 1.0.2: Added a debug option for Logz.io sender logs, helping to reduce the number of logs produced by the driver.
+- 1.0.1: Ignore empty lines
+- 1.0.0: First version
